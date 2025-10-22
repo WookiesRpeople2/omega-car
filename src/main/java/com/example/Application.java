@@ -7,7 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @SpringBootApplication
-@EnableJpaRepositories(basePackages = "com.example.Repository")
+@EnableJpaRepositories(basePackages = "com.example.repository")
 @Theme("default")
 public class Application implements AppShellConfigurator {
 
