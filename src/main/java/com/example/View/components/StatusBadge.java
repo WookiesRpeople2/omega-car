@@ -1,10 +1,11 @@
 package com.example.View.components;
 
+import com.example.Model.BookingStatus;
 import com.vaadin.flow.component.html.Span;
 
 public class StatusBadge extends Span {
     
-    public StatusBadge(String status) {
+    public StatusBadge(BookingStatus status) {
         setText(getStatusText(status));
         getStyle()
             .set("padding", "4px 12px")
@@ -15,29 +16,25 @@ public class StatusBadge extends Span {
         applyStatusStyle(status);
     }
     
-    private String getStatusText(String status) {
-        return switch (status.toLowerCase()) {
-            case "confirmed" -> "✓ Confirmed";
-            case "cancelled" -> "✗ Cancelled";
-            case "pending" -> "⏱ Pending";
-            default -> status;
+    private String getStatusText(BookingStatus status) {
+        return switch (status) {
+            case CONFIRMED -> "✓ Confirmed";
+            case CANCELLED -> "✗ Cancelled";
+            case PENDING -> "⏱ Pending";
         };
     }
     
-    private void applyStatusStyle(String status) {
-        switch (status.toLowerCase()) {
-            case "confirmed" -> getStyle()
+    private void applyStatusStyle(BookingStatus status) {
+        switch (status) {
+            case CONFIRMED -> getStyle()
                     .set("background", "#d1fae5")
                     .set("color", "#065f46");
-            case "cancelled" -> getStyle()
+            case CANCELLED -> getStyle()
                     .set("background", "#fee2e2")
                     .set("color", "#991b1b");
-            case "pending" -> getStyle()
+            case PENDING -> getStyle()
                     .set("background", "#fef3c7")
                     .set("color", "#92400e");
-            default -> getStyle()
-                    .set("background", "#e5e7eb")
-                    .set("color", "#374151");
         }
     }
 }

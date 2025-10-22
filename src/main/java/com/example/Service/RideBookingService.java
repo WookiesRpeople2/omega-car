@@ -4,42 +4,52 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import com.example.Configuration.SafeExecutor;
+import com.example.Model.BookingStatus;
 import com.example.Model.RideBooking;
 import com.example.Repository.RideBookingRepository;
+import jakarta.persistence.EntityNotFoundException;
 
 @Service
-public class RideBookingService extends SafeExecutor {
+public class RideBookingService {
     
-    @Autowired
-    private RideBookingRepository rideBookingRepository;
+    private final RideBookingRepository rideBookingRepository;
 
+    public RideBookingService(RideBookingRepository rideBookingRepository) {
+        this.rideBookingRepository = rideBookingRepository;
+    }
+
+    @Transactional
     public RideBooking createBooking(RideBooking booking) {
-        booking.setStatus("pending");
-        return executeSafely(rideBookingRepository::save, booking);
+        booking.setStatus(BookingStatus.PENDING);
+        return rideBookingRepository.save(booking);
     }
 
-    public Optional<RideBooking> getBooking(String id) {
-        UUID uuid = UUID.fromString(id);
-        return executeSafely(rideBookingRepository::findById, uuid);
+    @Transactional(readOnly = true)
+    public Optional<RideBooking> getBooking(UUID id) {
+        return rideBookingRepository.findById(id);
     }
 
+    @Transactional(readOnly = true)
     public List<RideBooking> getAllBookings() {
-        return executeSafely(rideBookingRepository::findAll);
+        return rideBookingRepository.findAll();
     }
 
-    public RideBooking updateBooking(String id, RideBooking updatedBooking) {
-        UUID uuid = UUID.fromString(id);
-        return executeSafely(rideBookingRepository::updateValues, uuid, updatedBooking);
+    @Transactional
+    public RideBooking updateBooking(UUID id, RideBooking updatedBooking) {
+        if (!rideBookingRepository.existsById(id)) {
+            throw new EntityNotFoundException("RideBooking not found");
+        }
+        return rideBookingRepository.updateValues(id, updatedBooking);
     }
 
-    public void deleteBooking(String id) {
-        UUID uuid = UUID.fromString(id);
-        executeSafely(rideBookingRepository::deleteAndReturn, uuid);
+    @Transactional
+    public void deleteBooking(UUID id) {
+        if (!rideBookingRepository.existsById(id)) {
+            throw new EntityNotFoundException("RideBooking not found");
+        }
+        rideBookingRepository.deleteById(id);
     }
-    
-
 }

@@ -1,9 +1,9 @@
-package com.example.Dto.ridebooking;
+package com.example.Dto;
 
 import java.util.List;
 import java.util.UUID;
 
-import com.example.Model.RideBooking.BookingStatus;
+import com.example.Model.BookingStatus;
 
 public class RideBookingDto {
     private UUID id;

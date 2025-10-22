@@ -26,8 +26,9 @@ public class RideBooking extends BaseModel {
     private List<UUID> passenger_id;
 
 
-    @Pattern(regexp="pending|confirmed|cancelled", message="{BAD_STATUS}")
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private BookingStatus status;
 
     // Getters
     public UUID getRideId() {
@@ -42,7 +43,7 @@ public class RideBooking extends BaseModel {
         return passenger_id;
     }
 
-    public String getStatus() {
+    public BookingStatus getStatus() {
         return status;
     }
 
@@ -59,7 +60,7 @@ public class RideBooking extends BaseModel {
         this.passenger_id = passenger_id;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(BookingStatus status) {
         this.status = status;
     }
 }

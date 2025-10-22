@@ -1,5 +1,6 @@
 package com.example.View.Admin.RideBooking;
 
+import com.example.Model.BookingStatus;
 import com.example.Model.RideBooking;
 import com.example.Model.Ride;
 import com.example.Service.RideBookingService;
@@ -77,7 +78,7 @@ public class RideBookingView extends VerticalLayout {
         addButton.addClickListener(e -> {
             // create a new booking and open dialog
             RideBooking newBooking = new RideBooking();
-            newBooking.setStatus("pending");
+            newBooking.setStatus(BookingStatus.PENDING);
             openBookingDialog(newBooking);
         });
         
@@ -95,10 +96,10 @@ public class RideBookingView extends VerticalLayout {
         List<RideBooking> allBookings = rideBookingService.getAllBookings();
         int totalBookings = allBookings.size();
         long confirmedBookings = allBookings.stream()
-            .filter(booking -> "confirmed".equals(booking.getStatus()))
+            .filter(booking -> BookingStatus.CONFIRMED.equals(booking.getStatus()))
             .count();
         long pendingBookings = allBookings.stream()
-            .filter(booking -> "pending".equals(booking.getStatus()))
+            .filter(booking -> BookingStatus.PENDING.equals(booking.getStatus()))
             .count();
         
         statsLayout.add(
@@ -207,9 +208,9 @@ public class RideBookingView extends VerticalLayout {
         seatsBookedField.setWidthFull();
         seatsBookedField.setMin(1);
         
-        Select<String> statusSelect = new Select<>();
+        Select<BookingStatus> statusSelect = new Select<>();
         statusSelect.setLabel("Status");
-        statusSelect.setItems("pending", "confirmed", "cancelled");
+        statusSelect.setItems(BookingStatus.values());
         statusSelect.setWidthFull();
         
         binder.forField(seatsBookedField)

@@ -1,5 +1,6 @@
 package com.example.View.User.RideBooking;
 
+import com.example.Model.BookingStatus;
 import com.example.Model.RideBooking;
 import com.example.Service.RideBookingService;
 import com.example.Service.RideService;
@@ -512,7 +513,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
             .set("transition", "all 0.3s ease");
         takeBtn.addClickListener(e -> {
             try {
-                booking.setStatus("confirmed");
+                booking.setStatus(BookingStatus.CONFIRMED);
                 rideBookingService.updateBooking(booking.getId().toString(), booking);
                 refreshCardsWithData(rideBookingService.getAllBookings());
                 AppNotification.success("Réservation validée");
