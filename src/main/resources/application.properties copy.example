@@ -8,3 +8,12 @@ spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
 spring.jpa.database-platform=org.hibernate.dialect.MySQLDialect
 
+jwt.signing.secret=
+jwt.aes.key=
+
+spring.mail.host=localhost
+spring.mail.port=1025
+spring.mail.username=
+spring.mail.password=
+spring.mail.properties.mail.smtp.auth=false
+spring.mail.properties.mail.smtp.starttls.enable=false

@@ -1,6 +1,5 @@
 package com.example.View.Admin;
 
-import com.example.Security.SecuredRoles;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.H2;

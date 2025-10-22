@@ -11,8 +11,8 @@ import javax.crypto.spec.PBEKeySpec;
 
 public class PasswordHasher {
   private static final int SALT_BYTES = 16;
-  private static final int ITERATIONS = 210000; // modern default
-  private static final int KEY_LENGTH = 256; // bits
+  private static final int ITERATIONS = 210000;
+  private static final int KEY_LENGTH = 256;
 
   public static String generateSaltBase64() {
     byte[] salt = new byte[SALT_BYTES];

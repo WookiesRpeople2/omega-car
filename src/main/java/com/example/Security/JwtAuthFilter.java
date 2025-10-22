@@ -34,14 +34,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
           Map<String, Object> claims = jwtService.parseEncryptedJwt(token);
           String subject = (String) claims.get("sub");
           String role = (String) claims.getOrDefault("role", "User");
-          // Normalize role: First letter uppercase, rest lowercase (e.g., "user" -> "User")
           String normalizedRole = (role != null && !role.isEmpty()) 
             ? role.substring(0, 1).toUpperCase() + (role.length() > 1 ? role.substring(1).toLowerCase() : "")
             : "User";
           Authentication auth = new UsernamePasswordAuthenticationToken(subject, null, java.util.List.of(new SimpleGrantedAuthority("ROLE_" + normalizedRole)));
           SecurityContextHolder.getContext().setAuthentication(auth);
         } catch (Exception ignored) {
-          // invalid token -> ignore
         }
       }
     }

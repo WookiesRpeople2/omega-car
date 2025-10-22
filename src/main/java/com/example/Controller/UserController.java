@@ -20,10 +20,11 @@ import com.example.Repository.UserRepository;
 
 @RestController
 @RequestMapping("/api/users")
-public class UserController {
+public class UserController extends BaseController<User, UUID> {
   private final UserRepository userRepository;
 
   public UserController(UserRepository userRepository) {
+    super(User.class, com.example.Dto.UserDto.class);
     this.userRepository = userRepository;
   }
 
@@ -36,7 +37,7 @@ public class UserController {
     
     String email = auth.getName();
     return userRepository.findByEmail(email)
-      .map(this::toDto)
+      .map(user -> this.<User, UserDto>toDto(user))
       .map(ResponseEntity::ok)
       .orElse(ResponseEntity.notFound().build());
   }
@@ -45,7 +46,7 @@ public class UserController {
   @PreAuthorize("hasRole('Admin')")
   public ResponseEntity<List<UserDto>> getAllUsers() {
     List<UserDto> users = userRepository.findAll().stream()
-      .map(this::toDto)
+      .map(user -> this.<User, UserDto>toDto(user))
       .collect(Collectors.toList());
     return ResponseEntity.ok(users);
   }
@@ -54,21 +55,9 @@ public class UserController {
   @PreAuthorize("hasRole('Admin')")
   public ResponseEntity<UserDto> getUserById(@PathVariable UUID id) {
     return userRepository.findById(id)
-      .map(this::toDto)
+      .map(user -> this.<User, UserDto>toDto(user))
       .map(ResponseEntity::ok)
       .orElse(ResponseEntity.notFound().build());
-  }
-
-  private UserDto toDto(User user) {
-    UserDto dto = new UserDto();
-    dto.setId(user.getId());
-    dto.setFirstName(user.getFirst_name());
-    dto.setLastName(user.getLast_name());
-    dto.setEmail(user.getEmail());
-    dto.setRole(user.getRole());
-    dto.setEmailValidated(user.getEmailValidated());
-    dto.setMobilePhone(user.getMobilePhone());
-    return dto;
   }
 }
 

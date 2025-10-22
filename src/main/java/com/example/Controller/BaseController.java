@@ -80,7 +80,6 @@ public abstract class BaseController<T, ID> {
     }
 
     private static String normalize(String name) {
-        // remove underscores and lowercase for lenient matching between snake_case and camelCase
         return name.replace("_", "").toLowerCase(Locale.ROOT);
     }
 }

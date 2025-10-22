@@ -30,7 +30,6 @@ public class RideBooking extends BaseModel {
     @Column(name = "status", nullable = false)
     private BookingStatus status;
 
-    // Getters
     public UUID getRideId() {
         return rideId;
     }
@@ -47,7 +46,6 @@ public class RideBooking extends BaseModel {
         return status;
     }
 
-    // Setters
     public void setRideId(UUID rideId) {
         this.rideId = rideId;
     }
