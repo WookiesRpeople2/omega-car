@@ -1,9 +1,8 @@
 package com.example.View.Admin.RideBooking;
 
+import com.example.Dto.RideBookingDto;
+import com.example.Dto.RideDto;
 import com.example.Model.BookingStatus;
-import com.example.Model.RideBooking;
-import com.example.Model.Ride;
-import com.example.Service.RideBookingService;
 import com.example.View.components.*;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -23,24 +22,30 @@ import com.vaadin.flow.component.select.Select;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationException;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.VaadinService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 
+import jakarta.servlet.http.Cookie;
+import java.util.Arrays;
 import java.util.UUID;
 import java.util.List;
 
 @Route("admin/bookings")
 public class RideBookingView extends VerticalLayout {
 
-    private final RideBookingService rideBookingService;
-    private final com.example.Service.RideService rideService;
-    private final Grid<RideBooking> grid;
-    private final Binder<RideBooking> binder;
+    private final WebClient webClient;
+    private final String baseUrl;
+    private final Grid<RideBookingDto> grid;
+    private final Binder<RideBookingDto> binder;
 
     @Autowired
-    public RideBookingView(RideBookingService rideBookingService, com.example.Service.RideService rideService) {
-        this.rideBookingService = rideBookingService;
-        this.rideService = rideService;
-        this.binder = new Binder<>(RideBooking.class);
+    public RideBookingView(WebClient webClient, @Value("${app.base-url}") String baseUrl) {
+        this.webClient = webClient;
+        this.baseUrl = baseUrl;
+        this.binder = new Binder<>(RideBookingDto.class);
         
         addClassName("bookings-admin-view");
         setSizeFull();
@@ -77,8 +82,8 @@ public class RideBookingView extends VerticalLayout {
         ActionButton addButton = ActionButton.createPrimary("Add New Booking", VaadinIcon.PLUS);
         addButton.addClickListener(e -> {
             // create a new booking and open dialog
-            RideBooking newBooking = new RideBooking();
-            newBooking.setStatus(BookingStatus.PENDING);
+            RideBookingDto newBooking = new RideBookingDto();
+            newBooking.setBookingStatus(BookingStatus.PENDING);
             openBookingDialog(newBooking);
         });
         
@@ -93,13 +98,13 @@ public class RideBookingView extends VerticalLayout {
         statsLayout.setPadding(true);
         statsLayout.setSpacing(true);
         
-        List<RideBooking> allBookings = rideBookingService.getAllBookings();
+        List<RideBookingDto> allBookings = getAllBookings();
         int totalBookings = allBookings.size();
         long confirmedBookings = allBookings.stream()
-            .filter(booking -> BookingStatus.CONFIRMED.equals(booking.getStatus()))
+            .filter(booking -> BookingStatus.CONFIRMED.equals(booking.getBookingStatus()))
             .count();
         long pendingBookings = allBookings.stream()
-            .filter(booking -> BookingStatus.PENDING.equals(booking.getStatus()))
+            .filter(booking -> BookingStatus.PENDING.equals(booking.getBookingStatus()))
             .count();
         
         statsLayout.add(
@@ -111,23 +116,23 @@ public class RideBookingView extends VerticalLayout {
         return statsLayout;
     }
 
-    private Grid<RideBooking> createGrid() {
-        Grid<RideBooking> gridLocal = new Grid<>(RideBooking.class, false);
+    private Grid<RideBookingDto> createGrid() {
+        Grid<RideBookingDto> gridLocal = new Grid<>(RideBookingDto.class, false);
         gridLocal.addClassName("bookings-grid");
         gridLocal.addThemeVariants(GridVariant.LUMO_NO_BORDER, GridVariant.LUMO_ROW_STRIPES);
         gridLocal.setHeight("100%");
         
-        gridLocal.addColumn(RideBooking::getRideId)
+        gridLocal.addColumn(RideBookingDto::getRideId)
             .setHeader("Ride ID")
             .setSortable(true)
             .setFlexGrow(1);
         
-        gridLocal.addColumn(RideBooking::getSeatsBooked)
+        gridLocal.addColumn(RideBookingDto::getSeatsBooked)
             .setHeader("Seats Booked")
             .setSortable(true)
             .setFlexGrow(1);
         
-        gridLocal.addComponentColumn(booking -> new StatusBadge(booking.getStatus()))
+        gridLocal.addComponentColumn(booking -> new StatusBadge(booking.getBookingStatus()))
             .setHeader("Status").setFlexGrow(1);
         
         gridLocal.addComponentColumn(booking -> {
@@ -149,7 +154,7 @@ public class RideBookingView extends VerticalLayout {
         return gridLocal;
     }
 
-    private void openBookingDialog(RideBooking booking) {
+    private void openBookingDialog(RideBookingDto booking) {
         Dialog dialog = new Dialog();
         dialog.setWidth("500px");
         dialog.setCloseOnOutsideClick(false);
@@ -166,12 +171,12 @@ public class RideBookingView extends VerticalLayout {
         formLayout.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1));
         
         // Ride selector
-        com.vaadin.flow.component.combobox.ComboBox<Ride> rideSelect = new com.vaadin.flow.component.combobox.ComboBox<>("Ride");
+        com.vaadin.flow.component.combobox.ComboBox<RideDto> rideSelect = new com.vaadin.flow.component.combobox.ComboBox<>("Ride");
         try {
-            rideSelect.setItems(rideService.getAllRides());
+            rideSelect.setItems(getAllRides());
         } catch (Exception ignored) {
         }
-        rideSelect.setItemLabelGenerator(r -> r.getId().toString() + " — " + r.getPick_up() + " → " + r.getDrop_off());
+        rideSelect.setItemLabelGenerator(r -> r.getId().toString() + " — " + r.getPickUp() + " → " + r.getDropOff());
 
         TextField rideIdField = new TextField("Ride ID");
         rideIdField.setWidthFull();
@@ -188,15 +193,16 @@ public class RideBookingView extends VerticalLayout {
 
         // when a ride is selected, update rideId and display fields
         rideSelect.addValueChangeListener(ev -> {
-            Ride selected = ev.getValue();
+            RideDto selected = ev.getValue();
             if (selected != null) {
                 rideIdField.setValue(selected.getId() != null ? selected.getId().toString() : "");
-                if (selected.getCar() != null) {
-                    carModelField.setValue(selected.getCar().getMake() + " " + selected.getCar().getModel());
+                // Note: CarDto doesn't have nested car info, so we'll just show car ID
+                if (selected.getCarId() != null) {
+                    carModelField.setValue("Car ID: " + selected.getCarId().toString());
                 } else {
                     carModelField.setValue("");
                 }
-                trajetField.setValue(selected.getPick_up() + " → " + selected.getDrop_off());
+                trajetField.setValue(selected.getPickUp() + " → " + selected.getDropOff());
             } else {
                 rideIdField.setValue("");
                 carModelField.setValue("");
@@ -215,11 +221,11 @@ public class RideBookingView extends VerticalLayout {
         
         binder.forField(seatsBookedField)
             .asRequired("Number of seats is required")
-            .bind(RideBooking::getSeatsBooked, RideBooking::setSeatsBooked);
+            .bind(RideBookingDto::getSeatsBooked, RideBookingDto::setSeatsBooked);
         
         binder.forField(statusSelect)
             .asRequired("Status is required")
-            .bind(RideBooking::getStatus, RideBooking::setStatus);
+            .bind(RideBookingDto::getBookingStatus, RideBookingDto::setBookingStatus);
         
         binder.forField(rideIdField)
             .asRequired("Ride ID is required")
@@ -227,7 +233,7 @@ public class RideBookingView extends VerticalLayout {
                 uuid -> uuid != null ? UUID.fromString(uuid) : null,
                 uuid -> uuid != null ? uuid.toString() : ""
             )
-            .bind(RideBooking::getRideId, RideBooking::setRideId);
+            .bind(RideBookingDto::getRideId, RideBookingDto::setRideId);
 
         // bind vehicleType and destinationCity to existing fields (if present)
         
@@ -250,10 +256,10 @@ public class RideBookingView extends VerticalLayout {
                 binder.writeBean(booking);
                 
                 if (isUpdate) {
-                    rideBookingService.updateBooking(booking.getId().toString(), booking);
+                    updateBooking(booking.getId().toString(), booking);
                     AppNotification.success("Booking updated successfully!");
                 } else {
-                    rideBookingService.createBooking(booking);
+                    createBooking(booking);
                     AppNotification.success("Booking created successfully!");
                 }
                 
@@ -276,20 +282,106 @@ public class RideBookingView extends VerticalLayout {
         dialog.open();
     }
 
-    private void deleteBooking(RideBooking booking) {
+    private void deleteBooking(RideBookingDto booking) {
         ConfirmDialog.show(
             "Confirm Deletion",
             "Are you sure you want to delete this booking?",
             "Delete",
             () -> {
-                rideBookingService.deleteBooking(booking.getId().toString());
+                deleteBookingById(booking.getId().toString());
                 refreshGrid();
                 AppNotification.success("Booking deleted successfully");
             });
     }
 
+    private String getAuthToken() {
+        Cookie[] cookies = VaadinService.getCurrentRequest().getCookies();
+        if (cookies != null) {
+            return Arrays.stream(cookies)
+                .filter(cookie -> "AUTH".equals(cookie.getName()))
+                .map(Cookie::getValue)
+                .findFirst()
+                .orElse(null);
+        }
+        return null;
+    }
+
+    private List<RideBookingDto> getAllBookings() {
+        try {
+            String token = getAuthToken();
+            Flux<RideBookingDto> bookingsFlux = webClient.get()
+                .uri(baseUrl + "/api/bookings")
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .retrieve()
+                .bodyToFlux(RideBookingDto.class);
+            return bookingsFlux.collectList().block();
+        } catch (Exception e) {
+            AppNotification.error("Error loading bookings: " + e.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<RideDto> getAllRides() {
+        try {
+            String token = getAuthToken();
+            Flux<RideDto> ridesFlux = webClient.get()
+                .uri(baseUrl + "/api/rides")
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .retrieve()
+                .bodyToFlux(RideDto.class);
+            return ridesFlux.collectList().block();
+        } catch (Exception e) {
+            AppNotification.error("Error loading rides: " + e.getMessage());
+            return List.of();
+        }
+    }
+
+    private void createBooking(RideBookingDto booking) {
+        try {
+            String token = getAuthToken();
+            webClient.post()
+                .uri(baseUrl + "/api/bookings")
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .bodyValue(booking)
+                .retrieve()
+                .bodyToMono(RideBookingDto.class)
+                .block();
+        } catch (Exception e) {
+            throw new RuntimeException("Error creating booking: " + e.getMessage(), e);
+        }
+    }
+
+    private void updateBooking(String id, RideBookingDto booking) {
+        try {
+            String token = getAuthToken();
+            webClient.put()
+                .uri(baseUrl + "/api/bookings/" + id)
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .bodyValue(booking)
+                .retrieve()
+                .bodyToMono(RideBookingDto.class)
+                .block();
+        } catch (Exception e) {
+            throw new RuntimeException("Error updating booking: " + e.getMessage(), e);
+        }
+    }
+
+    private void deleteBookingById(String id) {
+        try {
+            String token = getAuthToken();
+            webClient.delete()
+                .uri(baseUrl + "/api/bookings/" + id)
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .retrieve()
+                .bodyToMono(Void.class)
+                .block();
+        } catch (Exception e) {
+            AppNotification.error("Error deleting booking: " + e.getMessage());
+        }
+    }
+
     private void refreshGrid() {
-        grid.setItems(rideBookingService.getAllBookings());
+        grid.setItems(getAllBookings());
     }
 
    

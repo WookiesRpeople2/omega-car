@@ -1,7 +1,7 @@
 package com.example.View.Admin.Ride;
 
-import com.example.Model.Ride;
-import com.example.Service.RideService;
+import com.example.Dto.RideDto;
+import com.example.Dto.CarDto;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -27,20 +27,29 @@ import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationException;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.VaadinService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
+
+import jakarta.servlet.http.Cookie;
+import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
 
 @Route("admin/rides")
 public class RideView extends VerticalLayout {
-        private final RideService rideService;
-        private final com.example.Service.CarsService carsService;
-    private final Grid<Ride> grid;
-    private final Binder<Ride> rideBinder;
+    private final WebClient webClient;
+    private final String baseUrl;
+    private final Grid<RideDto> grid;
+    private final Binder<RideDto> rideBinder;
 
     @Autowired
-        public RideView(RideService rideService, com.example.Service.CarsService carsService) {
-                this.rideService = rideService;
-                this.carsService = carsService;
-        this.rideBinder = new Binder<>(Ride.class);
+    public RideView(WebClient webClient, @Value("${app.base-url}") String baseUrl) {
+        this.webClient = webClient;
+        this.baseUrl = baseUrl;
+        this.rideBinder = new Binder<>(RideDto.class);
 
         addClassName("ride-admin-view");
         setSizeFull();
@@ -100,7 +109,7 @@ public class RideView extends VerticalLayout {
                 .set("box-shadow", "0 4px 12px rgba(99, 102, 241, 0.3)")
                 .set("transition", "all 0.3s ease");
 
-        addButton.addClickListener(e -> openRideDialog(new Ride()));
+        addButton.addClickListener(e -> openRideDialog(new RideDto()));
 
         header.add(titleSection, addButton);
         return header;
@@ -113,7 +122,7 @@ public class RideView extends VerticalLayout {
         statsLayout.setPadding(true);
         statsLayout.setSpacing(true);
 
-        int totalRides = rideService.getAllRides().size();
+        int totalRides = getAllRides().size();
 
 
         statsLayout.add(
@@ -162,36 +171,37 @@ public class RideView extends VerticalLayout {
         return card;
     }
 
-    private Grid<Ride> createGrid() {
-        Grid<Ride> grid = new Grid<>(Ride.class, false);
+    private Grid<RideDto> createGrid() {
+        Grid<RideDto> grid = new Grid<>(RideDto.class, false);
         grid.addClassName("cars-grid");
         grid.addThemeVariants(GridVariant.LUMO_NO_BORDER, GridVariant.LUMO_ROW_STRIPES);
         grid.setHeight("100%");
 
         grid.addColumn(ride -> {
-            if (ride.getCar() == null) return "";
-            return ride.getCar().getMake() + " " + ride.getCar().getModel() + " — " + ride.getCar().getLicense_plate();
+            if (ride.getCarId() == null) return "N/A";
+            // Fetch car details if needed
+            return "Car ID: " + ride.getCarId().toString();
         })
                 .setHeader("Vehicle")
                 .setSortable(true)
                 .setFlexGrow(1);
 
-        grid.addColumn(Ride::getPick_up)
+        grid.addColumn(RideDto::getPickUp)
                 .setHeader("Pick up address")
                 .setSortable(true)
                 .setFlexGrow(1);
 
-        grid.addColumn(Ride::getDrop_off)
+        grid.addColumn(RideDto::getDropOff)
                 .setHeader("Drop off address")
                 .setSortable(true)
                 .setFlexGrow(1);
 
-        grid.addColumn(Ride::getDeparture_time)
+        grid.addColumn(RideDto::getDepartureTime)
                 .setHeader("Departure time")
                 .setSortable(true)
                 .setFlexGrow(1);
 
-        grid.addColumn(Ride::getPrice)
+        grid.addColumn(RideDto::getPrice)
                 .setHeader("Price")
                 .setSortable(true)
                 .setFlexGrow(1);
@@ -208,7 +218,7 @@ public class RideView extends VerticalLayout {
             Button deleteBtn = new Button(VaadinIcon.TRASH.create());
             deleteBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
             deleteBtn.getStyle().set("color", "#ef4444");
-            deleteBtn.addClickListener(e -> deleteCar(ride));
+            deleteBtn.addClickListener(e -> deleteRide(ride));
 
             actions.add(editBtn, deleteBtn);
             return actions;
@@ -217,7 +227,7 @@ public class RideView extends VerticalLayout {
         return grid;
     }
 
-    private void openRideDialog(Ride ride) {
+    private void openRideDialog(RideDto ride) {
         Dialog dialog = new Dialog();
         dialog.setWidth("500px");
         dialog.setCloseOnOutsideClick(false);
@@ -233,16 +243,16 @@ public class RideView extends VerticalLayout {
         FormLayout formLayout = new FormLayout();
         formLayout.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1));
 
-                ComboBox<com.example.Model.Car> carSelect = new ComboBox<>("Vehicle");
-                carSelect.setWidthFull();
-                carSelect.getStyle().set("margin-top", "8px");
-                carSelect.setItemLabelGenerator(c -> c == null ? "" : c.getMake() + " " + c.getModel() + " — " + c.getLicense_plate());
-                try {
-                        carSelect.setItems(carsService.getAllCars());
-                } catch (Exception e) {
-                        // fallback to empty list if service fails
-                        carSelect.setItems();
-                }
+        ComboBox<CarDto> carSelect = new ComboBox<>("Vehicle");
+        carSelect.setWidthFull();
+        carSelect.getStyle().set("margin-top", "8px");
+        carSelect.setItemLabelGenerator(c -> c == null ? "" : c.getMake() + " " + c.getModel() + " — " + c.getLicensePlate());
+        try {
+            carSelect.setItems(getAllCars());
+        } catch (Exception e) {
+            // fallback to empty list if service fails
+            carSelect.setItems();
+        }
 
         TextField pickupField = new TextField("Pick up address");
         pickupField.setWidthFull();
@@ -250,33 +260,35 @@ public class RideView extends VerticalLayout {
         TextField dropoffField = new TextField("Drop off address");
         dropoffField.setWidthFull();
 
-//        TextField departureTimeField = new TextField("Departure time");
-//        departureTimeField.setWidthFull();
         DateTimePicker departureTimeField = new DateTimePicker();
         departureTimeField.setLabel("Departure time");
 
         NumberField priceField = new NumberField("Price");
         priceField.setWidthFull();
 
-
         rideBinder.forField(pickupField)
                 .asRequired("Pick up address is required")
-                .bind(Ride::getPick_up, Ride::setPick_up);
-
-        rideBinder.forField(carSelect)
-                .bind(Ride::getCar, Ride::setCar);
+                .bind(RideDto::getPickUp, RideDto::setPickUp);
 
         rideBinder.forField(dropoffField)
                 .asRequired("Drop off address is required")
-                .bind(Ride::getDrop_off, Ride::setDrop_off);
+                .bind(RideDto::getDropOff, RideDto::setDropOff);
 
         rideBinder.forField(departureTimeField)
                 .asRequired("Departure time is required")
-                .bind(Ride::getDeparture_time, Ride::setDeparture_time);
+                .bind(RideDto::getDepartureTime, RideDto::setDepartureTime);
 
         rideBinder.forField(priceField)
                 .asRequired("Price is required")
-                .bind(Ride::getPrice, Ride::setPrice);
+                .bind(RideDto::getPrice, RideDto::setPrice);
+
+        // Handle car selection separately
+        if (ride.getCarId() != null && !carSelect.isEmpty()) {
+            carSelect.setValue(getAllCars().stream()
+                .filter(c -> c.getId().equals(ride.getCarId()))
+                .findFirst()
+                .orElse(null));
+        }
 
         rideBinder.readBean(ride);
 
@@ -299,12 +311,18 @@ public class RideView extends VerticalLayout {
         saveButton.addClickListener(e -> {
             try {
                 rideBinder.writeBean(ride);
+                
+                // Set carId from carSelect
+                CarDto selectedCar = carSelect.getValue();
+                if (selectedCar != null) {
+                    ride.setCarId(selectedCar.getId());
+                }
 
                 if (isUpdate) {
-                    rideService.updateRide(ride.getId().toString(), ride);
+                    updateRide(ride.getId().toString(), ride);
                     showNotification("Ride updated successfully!", NotificationVariant.LUMO_SUCCESS);
                 } else {
-                    rideService.createRide(ride);
+                    createRide(ride);
                     showNotification("Ride created successfully!", NotificationVariant.LUMO_SUCCESS);
                 }
 
@@ -327,7 +345,7 @@ public class RideView extends VerticalLayout {
         dialog.open();
     }
 
-    private void deleteCar(Ride ride) {
+    private void deleteRide(RideDto ride) {
         Dialog confirmDialog = new Dialog();
         confirmDialog.setWidth("400px");
 
@@ -351,7 +369,7 @@ public class RideView extends VerticalLayout {
         Button deleteBtn = new Button("Delete");
         deleteBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_ERROR);
         deleteBtn.addClickListener(e -> {
-            rideService.deleteRide(ride.getId().toString());
+            deleteRideById(ride.getId().toString());
             refreshGrid();
             confirmDialog.close();
             showNotification("Ride deleted successfully", NotificationVariant.LUMO_SUCCESS);
@@ -364,8 +382,94 @@ public class RideView extends VerticalLayout {
         confirmDialog.open();
     }
 
+    private String getAuthToken() {
+        Cookie[] cookies = VaadinService.getCurrentRequest().getCookies();
+        if (cookies != null) {
+            return Arrays.stream(cookies)
+                .filter(cookie -> "AUTH".equals(cookie.getName()))
+                .map(Cookie::getValue)
+                .findFirst()
+                .orElse(null);
+        }
+        return null;
+    }
+
+    private List<RideDto> getAllRides() {
+        try {
+            String token = getAuthToken();
+            Flux<RideDto> ridesFlux = webClient.get()
+                .uri(baseUrl + "/api/rides")
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .retrieve()
+                .bodyToFlux(RideDto.class);
+            return ridesFlux.collectList().block();
+        } catch (Exception e) {
+            showNotification("Error loading rides: " + e.getMessage(), NotificationVariant.LUMO_ERROR);
+            return List.of();
+        }
+    }
+
+    private List<CarDto> getAllCars() {
+        try {
+            String token = getAuthToken();
+            Flux<CarDto> carsFlux = webClient.get()
+                .uri(baseUrl + "/api/cars")
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .retrieve()
+                .bodyToFlux(CarDto.class);
+            return carsFlux.collectList().block();
+        } catch (Exception e) {
+            showNotification("Error loading cars: " + e.getMessage(), NotificationVariant.LUMO_ERROR);
+            return List.of();
+        }
+    }
+
+    private void createRide(RideDto ride) {
+        try {
+            String token = getAuthToken();
+            webClient.post()
+                .uri(baseUrl + "/api/rides")
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .bodyValue(ride)
+                .retrieve()
+                .bodyToMono(RideDto.class)
+                .block();
+        } catch (Exception e) {
+            throw new RuntimeException("Error creating ride: " + e.getMessage(), e);
+        }
+    }
+
+    private void updateRide(String id, RideDto ride) {
+        try {
+            String token = getAuthToken();
+            webClient.put()
+                .uri(baseUrl + "/api/rides/" + id)
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .bodyValue(ride)
+                .retrieve()
+                .bodyToMono(RideDto.class)
+                .block();
+        } catch (Exception e) {
+            throw new RuntimeException("Error updating ride: " + e.getMessage(), e);
+        }
+    }
+
+    private void deleteRideById(String id) {
+        try {
+            String token = getAuthToken();
+            webClient.delete()
+                .uri(baseUrl + "/api/rides/" + id)
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .retrieve()
+                .bodyToMono(Void.class)
+                .block();
+        } catch (Exception e) {
+            showNotification("Error deleting ride: " + e.getMessage(), NotificationVariant.LUMO_ERROR);
+        }
+    }
+
     private void refreshGrid() {
-        grid.setItems(rideService.getAllRides());
+        grid.setItems(getAllRides());
     }
 
     private void showNotification(String message, NotificationVariant variant) {

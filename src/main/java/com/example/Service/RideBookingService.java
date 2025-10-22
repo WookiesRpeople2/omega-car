@@ -38,7 +38,7 @@ public class RideBookingService {
     }
 
     @Transactional
-    public RideBooking updateBooking(UUID id, RideBooking updatedBooking) {
+    public RideBooking updateBooking(UUID id, RideBooking updatedBooking) throws IllegalAccessException {
         if (!rideBookingRepository.existsById(id)) {
             throw new EntityNotFoundException("RideBooking not found");
         }

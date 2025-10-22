@@ -1,9 +1,8 @@
 package com.example.View.User.RideBooking;
 
+import com.example.Dto.RideBookingDto;
+import com.example.Dto.RideDto;
 import com.example.Model.BookingStatus;
-import com.example.Model.RideBooking;
-import com.example.Service.RideBookingService;
-import com.example.Service.RideService;
 import com.example.View.components.*;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -27,8 +26,14 @@ import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationException;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.VaadinService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 
+import jakarta.servlet.http.Cookie;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -36,9 +41,9 @@ import java.util.stream.Collectors;
 @Route("bookings")
 public class UserRideBookingView extends VerticalLayout implements BeforeLeaveObserver {
 
-    private final RideBookingService rideBookingService;
-    private final RideService rideService;
-    private final Binder<RideBooking> binder;
+    private final WebClient webClient;
+    private final String baseUrl;
+    private final Binder<RideBookingDto> binder;
     private Dialog currentDialog = null;
     
     // Filtres
@@ -48,10 +53,10 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
     private NumberField maxPriceFilter;
 
     @Autowired
-    public UserRideBookingView(RideBookingService rideBookingService, RideService rideService) {
-        this.rideBookingService = rideBookingService;
-        this.rideService = rideService;
-        this.binder = new Binder<>(RideBooking.class);
+    public UserRideBookingView(WebClient webClient, @Value("${app.base-url}") String baseUrl) {
+        this.webClient = webClient;
+        this.baseUrl = baseUrl;
+        this.binder = new Binder<>(RideBookingDto.class);
 
         addClassName("user-bookings-view");
         setSizeFull();
@@ -244,16 +249,16 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
     }
 
     private void applyFilters() {
-        List<RideBooking> allBookings = rideBookingService.getAllBookings();
+        List<RideBookingDto> allBookings = getAllBookings();
         
-        List<RideBooking> filteredBookings = allBookings.stream()
+        List<RideBookingDto> filteredBookings = allBookings.stream()
             .filter(booking -> {
                 // Filtre modèle de voiture
                 if (carModelFilter.getValue() != null && !carModelFilter.getValue().trim().isEmpty()) {
-                    String carModel = rideService.getRide(booking.getRideId().toString())
+                    String carModel = getRideById(booking.getRideId())
                         .map(ride -> {
-                            if (ride.getCar() != null) {
-                                return (ride.getCar().getMake() + " " + ride.getCar().getModel()).toLowerCase();
+                            if (ride.getCarId() != null) {
+                                return "Car ID: " + ride.getCarId().toString();
                             }
                             return "";
                         })
@@ -266,8 +271,8 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
                 
                 // Filtre trajet
                 if (trajetFilter.getValue() != null && !trajetFilter.getValue().trim().isEmpty()) {
-                    String trajet = rideService.getRide(booking.getRideId().toString())
-                        .map(ride -> (ride.getPick_up() + " " + ride.getDrop_off()).toLowerCase())
+                    String trajet = getRideById(booking.getRideId())
+                        .map(ride -> (ride.getPickUp() + " " + ride.getDropOff()).toLowerCase())
                         .orElse("");
                     
                     if (!trajet.contains(trajetFilter.getValue().toLowerCase().trim())) {
@@ -280,8 +285,8 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
                 Double maxPrice = maxPriceFilter.getValue();
                 
                 if (minPrice != null || maxPrice != null) {
-                    Double ridePrice = rideService.getRide(booking.getRideId().toString())
-                        .map(ride -> ride.getPrice())
+                    Double ridePrice = getRideById(booking.getRideId())
+                        .map(RideDto::getPrice)
                         .orElse(null);
                     
                     if (ridePrice != null) {
@@ -305,11 +310,11 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
     }
     
     private void refreshCards(Div container) {
-        List<RideBooking> bookings = rideBookingService.getAllBookings();
+        List<RideBookingDto> bookings = getAllBookings();
         refreshCardsWithData(bookings, container);
     }
     
-    private void refreshCardsWithData(List<RideBooking> bookings) {
+    private void refreshCardsWithData(List<RideBookingDto> bookings) {
         // Trouver le conteneur de cartes existant et le vider
         Div container = null;
         for (int i = 0; i < getComponentCount(); i++) {
@@ -332,7 +337,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
         }
     }
     
-    private void refreshCardsWithData(List<RideBooking> bookings, Div container) {
+    private void refreshCardsWithData(List<RideBookingDto> bookings, Div container) {
         container.removeAll();
         
         if (bookings.isEmpty()) {
@@ -367,7 +372,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
         }
     }
     
-    private Div createBookingCard(RideBooking booking) {
+    private Div createBookingCard(RideBookingDto booking) {
         Div card = new Div();
         card.addClassName("booking-card");
         card.getStyle()
@@ -392,10 +397,10 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
         });
         
         // En-tête de la carte avec le modèle de voiture
-        String carInfo = rideService.getRide(booking.getRideId().toString())
+        String carInfo = getRideById(booking.getRideId())
             .map(ride -> {
-                if (ride.getCar() != null) {
-                    return ride.getCar().getMake() + " " + ride.getCar().getModel();
+                if (ride.getCarId() != null) {
+                    return "Car ID: " + ride.getCarId().toString();
                 }
                 return "N/A";
             })
@@ -430,8 +435,8 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
             .set("gap", "12px");
             
         // Trajet
-        String trajet = rideService.getRide(booking.getRideId().toString())
-            .map(r -> r.getPick_up() + " → " + r.getDrop_off())
+        String trajet = getRideById(booking.getRideId())
+            .map(r -> r.getPickUp() + " → " + r.getDropOff())
             .orElse("N/A");
             
         HorizontalLayout trajetLayout = new HorizontalLayout();
@@ -450,7 +455,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
         trajetLayout.add(locationIcon, trajetText);
         
         // Prix
-        String price = rideService.getRide(booking.getRideId().toString())
+        String price = getRideById(booking.getRideId())
             .map(r -> String.format("%.2f €", r.getPrice()))
             .orElse("N/A");
             
@@ -487,7 +492,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
         seatsLayout.add(seatsIcon, seatsText);
         
         // Statut
-        StatusBadge statusBadge = new StatusBadge(booking.getStatus());
+        StatusBadge statusBadge = new StatusBadge(booking.getBookingStatus());
         
         cardContent.add(trajetLayout, priceLayout, seatsLayout, statusBadge);
         
@@ -513,9 +518,9 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
             .set("transition", "all 0.3s ease");
         takeBtn.addClickListener(e -> {
             try {
-                booking.setStatus(BookingStatus.CONFIRMED);
-                rideBookingService.updateBooking(booking.getId().toString(), booking);
-                refreshCardsWithData(rideBookingService.getAllBookings());
+                booking.setBookingStatus(BookingStatus.CONFIRMED);
+                updateBooking(booking.getId().toString(), booking);
+                refreshCardsWithData(getAllBookings());
                 AppNotification.success("Réservation validée");
             } catch (Exception ex) {
                 AppNotification.error("Erreur: " + ex.getMessage());
@@ -532,8 +537,8 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
             "Êtes-vous sûr de vouloir annuler cette réservation ?",
             "Annuler", 
             () -> {
-                rideBookingService.deleteBooking(booking.getId().toString());
-                refreshCardsWithData(rideBookingService.getAllBookings());
+                deleteBookingById(booking.getId().toString());
+                refreshCardsWithData(getAllBookings());
                 AppNotification.success("Réservation annulée");
             }
         ));
@@ -546,7 +551,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
 
     // La méthode createGrid a été remplacée par createBookingCard et createCardsContainer
 
-    private void openBookingDialog(RideBooking booking) {
+    private void openBookingDialog(RideBookingDto booking) {
         Dialog dialog = new Dialog();
         dialog.setWidth("480px");
         dialog.setCloseOnOutsideClick(true);
@@ -586,7 +591,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
 
         binder.forField(seatsField)
             .asRequired("Le nombre de places est requis")
-            .bind(RideBooking::getSeatsBooked, RideBooking::setSeatsBooked);
+            .bind(RideBookingDto::getSeatsBooked, RideBookingDto::setSeatsBooked);
 
         binder.forField(rideIdField)
             .asRequired("L'ID du trajet est requis")
@@ -594,7 +599,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
                 s -> s != null && !s.isEmpty() ? UUID.fromString(s) : null,
                 u -> u != null ? u.toString() : ""
             )
-            .bind(RideBooking::getRideId, RideBooking::setRideId);
+            .bind(RideBookingDto::getRideId, RideBookingDto::setRideId);
 
         binder.readBean(booking);
 
@@ -610,10 +615,10 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
             try {
                 binder.writeBean(booking);
                 if (isUpdate) {
-                    rideBookingService.updateBooking(booking.getId().toString(), booking);
+                    updateBooking(booking.getId().toString(), booking);
                     AppNotification.success("Réservation mise à jour");
                 } else {
-                    rideBookingService.createBooking(booking);
+                    createBooking(booking);
                     AppNotification.success("Réservation créée");
                 }
                 refreshGrid();
@@ -658,7 +663,93 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
             maxPriceFilter.getValue() != null) {
             applyFilters();
         } else {
-            refreshCardsWithData(rideBookingService.getAllBookings());
+            refreshCardsWithData(getAllBookings());
+        }
+    }
+
+    private String getAuthToken() {
+        Cookie[] cookies = VaadinService.getCurrentRequest().getCookies();
+        if (cookies != null) {
+            return Arrays.stream(cookies)
+                .filter(cookie -> "AUTH".equals(cookie.getName()))
+                .map(Cookie::getValue)
+                .findFirst()
+                .orElse(null);
+        }
+        return null;
+    }
+
+    private List<RideBookingDto> getAllBookings() {
+        try {
+            String token = getAuthToken();
+            Flux<RideBookingDto> bookingsFlux = webClient.get()
+                .uri(baseUrl + "/api/bookings")
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .retrieve()
+                .bodyToFlux(RideBookingDto.class);
+            return bookingsFlux.collectList().block();
+        } catch (Exception e) {
+            AppNotification.error("Error loading bookings: " + e.getMessage());
+            return List.of();
+        }
+    }
+
+    private java.util.Optional<RideDto> getRideById(UUID id) {
+        try {
+            String token = getAuthToken();
+            RideDto ride = webClient.get()
+                .uri(baseUrl + "/api/rides/" + id.toString())
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .retrieve()
+                .bodyToMono(RideDto.class)
+                .block();
+            return java.util.Optional.ofNullable(ride);
+        } catch (Exception e) {
+            return java.util.Optional.empty();
+        }
+    }
+
+    private void createBooking(RideBookingDto booking) {
+        try {
+            String token = getAuthToken();
+            webClient.post()
+                .uri(baseUrl + "/api/bookings")
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .bodyValue(booking)
+                .retrieve()
+                .bodyToMono(RideBookingDto.class)
+                .block();
+        } catch (Exception e) {
+            throw new RuntimeException("Error creating booking: " + e.getMessage(), e);
+        }
+    }
+
+    private void updateBooking(String id, RideBookingDto booking) {
+        try {
+            String token = getAuthToken();
+            webClient.put()
+                .uri(baseUrl + "/api/bookings/" + id)
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .bodyValue(booking)
+                .retrieve()
+                .bodyToMono(RideBookingDto.class)
+                .block();
+        } catch (Exception e) {
+            throw new RuntimeException("Error updating booking: " + e.getMessage(), e);
+        }
+    }
+
+    private void deleteBookingById(String id) {
+        try {
+            String token = getAuthToken();
+            webClient.delete()
+                .uri(baseUrl + "/api/bookings/" + id)
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .retrieve()
+                .bodyToMono(Void.class)
+                .block();
+        } catch (Exception e) {
+            AppNotification.error("Error deleting booking: " + e.getMessage());
         }
     }
 

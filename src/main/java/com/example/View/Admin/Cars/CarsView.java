@@ -1,7 +1,6 @@
 package com.example.View.Admin.Cars;
 
-import com.example.Model.Car;
-import com.example.Service.CarsService;
+import com.example.Dto.CarDto;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -25,19 +24,30 @@ import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationException;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.VaadinService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
+
+import jakarta.servlet.http.Cookie;
+import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
 
 @Route("admin/cars")
 public class CarsView extends VerticalLayout {
 
-    private final CarsService carsService;
-    private final Grid<Car> grid;
-    private final Binder<Car> binder;
+    private final WebClient webClient;
+    private final String baseUrl;
+    private final Grid<CarDto> grid;
+    private final Binder<CarDto> binder;
 
     @Autowired
-    public CarsView(CarsService carsService) {
-        this.carsService = carsService;
-        this.binder = new Binder<>(Car.class);
+    public CarsView(WebClient webClient, @Value("${app.base-url}") String baseUrl) {
+        this.webClient = webClient;
+        this.baseUrl = baseUrl;
+        this.binder = new Binder<>(CarDto.class);
         
         addClassName("cars-admin-view");
         setSizeFull();
@@ -97,7 +107,7 @@ public class CarsView extends VerticalLayout {
             .set("box-shadow", "0 4px 12px rgba(99, 102, 241, 0.3)")
             .set("transition", "all 0.3s ease");
         
-        addButton.addClickListener(e -> openCarDialog(new Car()));
+        addButton.addClickListener(e -> openCarDialog(new CarDto()));
         
         header.add(titleSection, addButton);
         return header;
@@ -110,9 +120,10 @@ public class CarsView extends VerticalLayout {
         statsLayout.setPadding(true);
         statsLayout.setSpacing(true);
         
-        int totalCars = carsService.getAllCars().size();
-        long validatedCars = carsService.getAllCars().stream()
-            .filter(Car::isCar_validated)
+        List<CarDto> allCars = getAllCars();
+        int totalCars = allCars.size();
+        long validatedCars = allCars.stream()
+            .filter(CarDto::isCarValidated)
             .count();
         long pendingCars = totalCars - validatedCars;
         
@@ -164,30 +175,30 @@ public class CarsView extends VerticalLayout {
         return card;
     }
 
-    private Grid<Car> createGrid() {
-        Grid<Car> grid = new Grid<>(Car.class, false);
+    private Grid<CarDto> createGrid() {
+        Grid<CarDto> grid = new Grid<>(CarDto.class, false);
         grid.addClassName("cars-grid");
         grid.addThemeVariants(GridVariant.LUMO_NO_BORDER, GridVariant.LUMO_ROW_STRIPES);
         grid.setHeight("100%");
         
-        grid.addColumn(Car::getMake)
+        grid.addColumn(CarDto::getMake)
             .setHeader("Make")
             .setSortable(true)
             .setFlexGrow(1);
         
-        grid.addColumn(Car::getModel)
+        grid.addColumn(CarDto::getModel)
             .setHeader("Model")
             .setSortable(true)
             .setFlexGrow(1);
         
-        grid.addColumn(Car::getLicense_plate)
+        grid.addColumn(CarDto::getLicensePlate)
             .setHeader("License Plate")
             .setSortable(true)
             .setFlexGrow(1);
         
         grid.addComponentColumn(car -> {
             Span badge = new Span();
-            if (car.isCar_validated()) {
+            if (car.isCarValidated()) {
                 badge.setText("✓ Validated");
                 badge.getElement().getThemeList().add("badge success");
                 badge.getStyle()
@@ -232,7 +243,7 @@ public class CarsView extends VerticalLayout {
         return grid;
     }
 
-    private void openCarDialog(Car car) {
+    private void openCarDialog(CarDto car) {
         Dialog dialog = new Dialog();
         dialog.setWidth("500px");
         dialog.setCloseOnOutsideClick(false);
@@ -263,18 +274,18 @@ public class CarsView extends VerticalLayout {
         
         binder.forField(makeField)
             .asRequired("Make is required")
-            .bind(Car::getMake, Car::setMake);
+            .bind(CarDto::getMake, CarDto::setMake);
         
         binder.forField(modelField)
             .asRequired("Model is required")
-            .bind(Car::getModel, Car::setModel);
+            .bind(CarDto::getModel, CarDto::setModel);
         
         binder.forField(licensePlateField)
             .asRequired("License plate is required")
-            .bind(Car::getLicense_plate, Car::setLicense_plate);
+            .bind(CarDto::getLicensePlate, CarDto::setLicensePlate);
         
         binder.forField(validatedCheckbox)
-            .bind(Car::isCar_validated, Car::setCar_validated);
+            .bind(CarDto::isCarValidated, CarDto::setCarValidated);
         
         binder.readBean(car);
         
@@ -299,10 +310,10 @@ public class CarsView extends VerticalLayout {
                 binder.writeBean(car);
                 
                 if (isUpdate) {
-                    carsService.updateCar(car.getId().toString(), car);
+                    updateCar(car.getId().toString(), car);
                     showNotification("Vehicle updated successfully!", NotificationVariant.LUMO_SUCCESS);
                 } else {
-                    carsService.createCars(car);
+                    createCar(car);
                     showNotification("Vehicle created successfully!", NotificationVariant.LUMO_SUCCESS);
                 }
                 
@@ -325,7 +336,7 @@ public class CarsView extends VerticalLayout {
         dialog.open();
     }
 
-    private void deleteCar(Car car) {
+    private void deleteCar(CarDto car) {
         Dialog confirmDialog = new Dialog();
         confirmDialog.setWidth("400px");
         
@@ -349,7 +360,7 @@ public class CarsView extends VerticalLayout {
         Button deleteBtn = new Button("Delete");
         deleteBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_ERROR);
         deleteBtn.addClickListener(e -> {
-            carsService.deleteCar(car.getId().toString());
+            deleteCarById(car.getId().toString());
             refreshGrid();
             confirmDialog.close();
             showNotification("Vehicle deleted successfully", NotificationVariant.LUMO_SUCCESS);
@@ -362,8 +373,79 @@ public class CarsView extends VerticalLayout {
         confirmDialog.open();
     }
 
+    private String getAuthToken() {
+        Cookie[] cookies = VaadinService.getCurrentRequest().getCookies();
+        if (cookies != null) {
+            return Arrays.stream(cookies)
+                .filter(cookie -> "AUTH".equals(cookie.getName()))
+                .map(Cookie::getValue)
+                .findFirst()
+                .orElse(null);
+        }
+        return null;
+    }
+
+    private List<CarDto> getAllCars() {
+        try {
+            String token = getAuthToken();
+            Flux<CarDto> carsFlux = webClient.get()
+                .uri(baseUrl + "/api/cars")
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .retrieve()
+                .bodyToFlux(CarDto.class);
+            return carsFlux.collectList().block();
+        } catch (Exception e) {
+            showNotification("Error loading cars: " + e.getMessage(), NotificationVariant.LUMO_ERROR);
+            return List.of();
+        }
+    }
+
+    private void createCar(CarDto car) {
+        try {
+            String token = getAuthToken();
+            webClient.post()
+                .uri(baseUrl + "/api/cars")
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .bodyValue(car)
+                .retrieve()
+                .bodyToMono(CarDto.class)
+                .block();
+        } catch (Exception e) {
+            throw new RuntimeException("Error creating car: " + e.getMessage(), e);
+        }
+    }
+
+    private void updateCar(String id, CarDto car) {
+        try {
+            String token = getAuthToken();
+            webClient.put()
+                .uri(baseUrl + "/api/cars/" + id)
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .bodyValue(car)
+                .retrieve()
+                .bodyToMono(CarDto.class)
+                .block();
+        } catch (Exception e) {
+            throw new RuntimeException("Error updating car: " + e.getMessage(), e);
+        }
+    }
+
+    private void deleteCarById(String id) {
+        try {
+            String token = getAuthToken();
+            webClient.delete()
+                .uri(baseUrl + "/api/cars/" + id)
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .retrieve()
+                .bodyToMono(Void.class)
+                .block();
+        } catch (Exception e) {
+            showNotification("Error deleting car: " + e.getMessage(), NotificationVariant.LUMO_ERROR);
+        }
+    }
+
     private void refreshGrid() {
-        grid.setItems(carsService.getAllCars());
+        grid.setItems(getAllCars());
     }
 
     private void showNotification(String message, NotificationVariant variant) {
