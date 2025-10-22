@@ -5,10 +5,15 @@ import jakarta.persistence.Entity;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Builder
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 public class User extends BaseModel{
   @Size(min = 1, message = "{EMPTY_INPUT}")
@@ -28,11 +33,12 @@ public class User extends BaseModel{
   private String mobilePhone;
 
   @Size(min = 1, message = "{EMPTY_INPUT}")
+  @Column(nullable = false, length = 500)
   private String password;
   
-  @Column(name = "password_salt")
+  @Column(name = "password_salt", nullable = false, length = 100)
   private String passwordSalt;
   
-  @Column(name = "email_validated")
+  @Column(name = "email_validated", nullable = false, columnDefinition = "TINYINT(1)")
   private Boolean emailValidated;
 }

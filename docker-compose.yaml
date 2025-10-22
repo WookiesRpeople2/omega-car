@@ -13,6 +13,16 @@ services:
     volumes:
       - db_data:/var/lib/mysql
 
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: mailhog
+    restart: always
+    ports:
+      - "1025:1025"  
+      - "8025:8025" 
+    logging:
+      driver: none  
+
 volumes:
   db_data:
 

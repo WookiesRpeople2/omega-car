@@ -3,42 +3,51 @@ package com.example.Service;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.jar.Attributes.Name;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import com.example.Configuration.SafeExecutor;
 import com.example.Model.Car;
 import com.example.Repository.CarsRepository;
-
+import jakarta.persistence.EntityNotFoundException;
 
 @Service
-public class CarsService extends SafeExecutor{
-    @Autowired
-    private CarsRepository carsRepository;
+public class CarsService {
 
-    public Car createCars(Car car) {
-        return executeSafely(carsRepository::save, car);
+    private final CarsRepository carsRepository;
+
+    public CarsService(CarsRepository carsRepository) {
+        this.carsRepository = carsRepository;
     }
 
-    public Optional<Car> getCar(String id){
-        UUID uuid = UUID.fromString(id);
-        return executeSafely(carsRepository::findById, uuid);
+    @Transactional
+    public Car save(Car car) {
+        return carsRepository.save(car);
     }
 
-    public List<Car> getAllCars(){
-        return executeSafely(carsRepository::findAll);
+    @Transactional(readOnly = true)
+    public Optional<Car> findById(UUID id) {
+        return carsRepository.findById(id);
     }
 
-    public Car updateCar(String id, Car updatedCar){
-        UUID uuid = UUID.fromString(id);
-        return executeSafely(carsRepository::updateValues, uuid, updatedCar);
+    @Transactional(readOnly = true)
+    public List<Car> findAll() {
+        return carsRepository.findAll();
     }
 
-    public void deleteCar(String id){
-       UUID uuid = UUID.fromString(id);
-       executeSafely(carsRepository::deleteAndReturn, uuid);
+    @Transactional
+    public Car updateValues(UUID id, Car updatedCar) throws IllegalAccessException, EntityNotFoundException {
+        if (!carsRepository.existsById(id)) {
+            throw new EntityNotFoundException("Car not found");
+        }
+        return carsRepository.updateValues(id, updatedCar);
+    }
+
+    @Transactional
+    public void deleteById(UUID id) {
+        if (!carsRepository.existsById(id)) {
+            throw new EntityNotFoundException("Car not found");
+        }
+        carsRepository.deleteById(id);
     }
 }
-
