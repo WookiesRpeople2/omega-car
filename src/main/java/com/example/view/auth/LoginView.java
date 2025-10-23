@@ -27,6 +27,7 @@ import com.example.dto.LoginRequestDto;
 import jakarta.servlet.http.Cookie;
 
 import java.util.List;
+import java.util.Locale;
 
 @PageTitle("Login")
 @Route("login")
@@ -88,18 +89,22 @@ public class LoginView extends VerticalLayout {
         VaadinService.getCurrentResponse().addCookie(cookie);
         
         String role = response.getRole();
+        String normalizedRole = (role != null && !role.isEmpty())
+          ? role.substring(0, 1).toUpperCase(Locale.ENGLISH)
+              + (role.length() > 1 ? role.substring(1).toLowerCase(Locale.ENGLISH) : "")
+          : "User";
         Authentication auth = new UsernamePasswordAuthenticationToken(
           email, 
           null, 
-          List.of(new SimpleGrantedAuthority("ROLE_" + role))
+          List.of(new SimpleGrantedAuthority("ROLE_" + normalizedRole))
         );
         SecurityContextHolder.getContext().setAuthentication(auth);
         
         Notification.show("Login successful!", 3000, Notification.Position.MIDDLE);
         
-        if ("Admin".equals(role)) {
+        if ("Admin".equals(normalizedRole)) {
           UI.getCurrent().navigate("admin");
-        } else if ("Driver".equals(role)) {
+        } else if ("Driver".equals(normalizedRole)) {
           UI.getCurrent().navigate("driver");
         } else {
           UI.getCurrent().navigate("user");

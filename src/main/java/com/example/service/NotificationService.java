@@ -39,6 +39,11 @@ public class NotificationService {
     public void markRead(UUID id) {
         repository.findById(id).ifPresent(n -> { n.setRead(true); repository.save(n); });
     }
+
+    @Transactional
+    public void deleteByRelated(UUID relatedId) {
+        repository.deleteByRelatedId(relatedId);
+    }
 }
 
 

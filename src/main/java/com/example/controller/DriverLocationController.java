@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.dto.DriverLocationEvent;
 import com.example.service.DriverLocationKafka;
 import com.example.service.DriverLocationService;
+import com.example.service.DriverLocationUiBroadcaster;
 
 import jakarta.validation.Valid;
 
@@ -27,10 +28,12 @@ public class DriverLocationController {
 
     private final DriverLocationKafka producer;
     private final DriverLocationService service;
+    private final DriverLocationUiBroadcaster broadcaster;
 
-    public DriverLocationController(DriverLocationKafka producer, DriverLocationService service) {
+    public DriverLocationController(DriverLocationKafka producer, DriverLocationService service, DriverLocationUiBroadcaster broadcaster) {
         this.producer = producer;
         this.service = service;
+        this.broadcaster = broadcaster;
     }
 
     @PostMapping("/{driverId}")
@@ -40,14 +43,19 @@ public class DriverLocationController {
         if (body.getTimestamp() == null) {
             body.setTimestamp(Instant.now());
         }
-        producer.publish(body);
+        try { producer.publish(body); } catch (Exception ignored) {}
+        // Immediate local update so UIs and list endpoints reflect state even if Kafka is unavailable
+        service.upsertLocation(body);
+        try { broadcaster.broadcast(body); } catch (Exception ignored) {}
         return ResponseEntity.accepted().build();
     }
 
     @PostMapping("/{driverId}/offline")
     @PreAuthorize("hasRole('Driver') or hasRole('Admin')")
     public ResponseEntity<Void> goOffline(@PathVariable("driverId") UUID driverId) {
-        producer.publishOffline(driverId);
+        try { producer.publishOffline(driverId); } catch (Exception ignored) {}
+        service.markOffline(driverId);
+        try { broadcaster.broadcast(new DriverLocationUiBroadcaster.DriverOfflineEvent(driverId)); } catch (Exception ignored) {}
         return ResponseEntity.accepted().build();
     }
 

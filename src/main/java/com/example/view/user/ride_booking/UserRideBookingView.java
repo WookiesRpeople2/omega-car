@@ -2,7 +2,6 @@ package com.example.view.user.ride_booking;
 
 import com.example.dto.RideBookingDto;
 import com.example.dto.RideDto;
-import com.example.model.BookingStatus;
 import com.example.view.components.ActionButton;
 import com.example.view.components.AppNotification;
 import com.example.view.components.ConfirmDialog;
@@ -12,6 +11,12 @@ import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.router.BeforeLeaveEvent;
 import com.vaadin.flow.router.BeforeLeaveObserver;
+import com.vaadin.flow.component.datetimepicker.DateTimePicker;
+import com.vaadin.flow.component.AttachEvent;
+import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.data.provider.DataProvider;
+import com.vaadin.flow.data.provider.Query;
+import com.vaadin.flow.function.SerializableFunction;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H3;
@@ -30,6 +35,8 @@ import com.vaadin.flow.router.BeforeEnterEvent;
 import com.vaadin.flow.router.BeforeEnterObserver;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.server.VaadinService;
+import com.vaadin.flow.component.UI;
+import com.example.service.RideBookingUiBroadcaster;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -41,9 +48,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @RolesAllowed("User")
-@Route("bookings")
+@Route(value = "bookings", layout = com.example.view.layout.MainLayout.class)
 public class UserRideBookingView extends VerticalLayout implements BeforeLeaveObserver, BeforeEnterObserver {
 
     private final WebClient webClient;
@@ -58,9 +67,12 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
     private NumberField maxPriceFilter;
 
     private UUID pendingDriverIdParam = null;
+    private RideBookingUiBroadcaster.Registration bookingUiReg;
+    private boolean openDialogOnAttach = false;
+    private UUID pendingCarIdParam = null;
 
     @Autowired
-    public UserRideBookingView(WebClient webClient, @Value("${app.base-url}") String baseUrl) {
+    public UserRideBookingView(WebClient webClient, @Value("${app.base-url}") String baseUrl, RideBookingUiBroadcaster uiBroadcaster) {
         this.webClient = webClient;
         this.baseUrl = baseUrl;
         this.binder = new Binder<>(RideBookingDto.class);
@@ -94,7 +106,72 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
 
         applyGlobalStyles();
         refreshGrid();
+
+        bookingUiReg = uiBroadcaster.register(evt -> {
+            if (evt instanceof com.example.service.RideBookingUiBroadcaster.BookingStatusChangedEvent) {
+                getUI().ifPresent(ui -> ui.access(this::refreshGrid));
+            }
+        });
     }
+
+    private static class LocationSuggestion {
+        private final String label;
+        private final double lat;
+        private final double lon;
+        public LocationSuggestion(String label, double lat, double lon) {
+            this.label = label; this.lat = lat; this.lon = lon;
+        }
+        public String getLabel() { return label; }
+        public double getLat() { return lat; }
+        public double getLon() { return lon; }
+        @Override public String toString() { return label; }
+    }
+
+    private List<LocationSuggestion> searchPlaces(String query) {
+        try {
+            String url = "https://nominatim.openstreetmap.org/search?format=json&accept-language=en&q=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
+            var arr = webClient.get()
+                .uri(url)
+                .retrieve()
+                .bodyToMono(org.springframework.core.ParameterizedTypeReference.forType(java.util.List.class))
+                .block();
+            java.util.List<?> list = arr instanceof java.util.List ? (java.util.List<?>) arr : java.util.List.of();
+            java.util.List<LocationSuggestion> out = new java.util.ArrayList<>();
+            for (Object o : list) {
+                if (o instanceof java.util.Map<?,?> m) {
+                    Object display = m.get("display_name");
+                    Object lat = m.get("lat");
+                    Object lon = m.get("lon");
+                    if (display != null && lat != null && lon != null) {
+                        try {
+                            out.add(new LocationSuggestion(String.valueOf(display), Double.parseDouble(String.valueOf(lat)), Double.parseDouble(String.valueOf(lon))));
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+            return out;
+        } catch (Exception e) {
+            return java.util.List.of();
+        }
+    }
+
+    private String reverseGeocodeLabel(double lat, double lon) {
+        try {
+            String url = "https://nominatim.openstreetmap.org/reverse?format=json&accept-language=en&lat=" + lat + "&lon=" + lon;
+            var m = webClient.get()
+                .uri(url)
+                .retrieve()
+                .bodyToMono(org.springframework.core.ParameterizedTypeReference.forType(java.util.Map.class))
+                .block();
+            if (m instanceof java.util.Map<?,?> map) {
+                Object display = map.get("display_name");
+                if (display != null) return String.valueOf(display);
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+	// Client-side price computation removed; price is computed server-side
 
     private Div createModernHeader() {
         Div header = new Div();
@@ -119,7 +196,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
                 .set("color", "white")
                 .set("filter", "drop-shadow(0 2px 8px rgba(0,0,0,0.2))");
 
-        Span title = new Span("Mes Réservations");
+        Span title = new Span("My Bookings");
         title.getStyle()
                 .set("color", "white")
                 .set("font-size", "32px")
@@ -128,7 +205,19 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
 
         titleSection.add(icon, title);
 
-        headerContent.add(titleSection);
+        // New Reservation button
+        Button newBookingBtn = new Button("New booking", VaadinIcon.PLUS_CIRCLE.create());
+        newBookingBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        newBookingBtn.getStyle().set("border-radius", "8px");
+        newBookingBtn.addClickListener(e -> {
+            RideBookingDto draft = new RideBookingDto();
+            if (pendingDriverIdParam != null) {
+                draft.setDriverId(pendingDriverIdParam);
+            }
+            openBookingDialog(draft);
+        });
+
+        headerContent.add(titleSection, newBookingBtn);
         header.add(headerContent);
 
         return header;
@@ -150,7 +239,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
         filterHeader.setAlignItems(FlexComponent.Alignment.CENTER);
         filterHeader.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
 
-        Span filterTitle = new Span("🔍 Rechercher une réservation");
+        Span filterTitle = new Span("🔍 Search bookings");
         filterTitle.getStyle()
                 .set("font-size", "18px")
                 .set("font-weight", "600")
@@ -165,23 +254,23 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
         filterLayout.getStyle().set("margin-top", "16px");
 
         // Filtre modèle de voiture
-        carModelFilter = createModernTextField("Modèle de voiture", "Ex: Tesla Model 3", VaadinIcon.CAR);
+        carModelFilter = createModernTextField("Car model", "e.g., Tesla Model 3", VaadinIcon.CAR);
         carModelFilter.addValueChangeListener(e -> applyFilters());
 
         // Filtre trajet
-        trajetFilter = createModernTextField("Trajet", "Ex: Paris", VaadinIcon.MAP_MARKER);
+        trajetFilter = createModernTextField("Route", "e.g., Paris", VaadinIcon.MAP_MARKER);
         trajetFilter.addValueChangeListener(e -> applyFilters());
 
         // Filtre prix minimum
-        minPriceFilter = createModernNumberField("Prix min", "0", VaadinIcon.EURO);
+        minPriceFilter = createModernNumberField("Min price", "0", VaadinIcon.EURO);
         minPriceFilter.addValueChangeListener(e -> applyFilters());
 
         // Filtre prix maximum
-        maxPriceFilter = createModernNumberField("Prix max", "∞", VaadinIcon.EURO);
+        maxPriceFilter = createModernNumberField("Max price", "∞", VaadinIcon.EURO);
         maxPriceFilter.addValueChangeListener(e -> applyFilters());
 
         // Bouton réinitialiser
-        Button resetBtn = new Button("Réinitialiser", VaadinIcon.REFRESH.create());
+        Button resetBtn = new Button("Reset", VaadinIcon.REFRESH.create());
         resetBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
         resetBtn.getStyle()
                 .set("border-radius", "8px")
@@ -406,15 +495,8 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
                     .set("box-shadow", "0 4px 20px rgba(0,0,0,0.08)");
         });
 
-        // En-tête de la carte avec le modèle de voiture
-        String carInfo = getRideById(booking.getRideId())
-                .map(ride -> {
-                    if (ride.getCarId() != null) {
-                        return "Car ID: " + ride.getCarId().toString();
-                    }
-                    return "N/A";
-                })
-                .orElse("N/A");
+        // En-tête de la carte: Ride ID as title
+        String carInfo = booking.getRideId() != null ? booking.getRideId().toString() : "N/A";
 
         Div cardHeader = new Div();
         cardHeader.getStyle()
@@ -446,7 +528,11 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
 
         // Trajet
         String trajet = getRideById(booking.getRideId())
-                .map(r -> r.getPickUp() + " → " + r.getDropOff())
+                .map(r -> {
+                    String from = r.getPickupName() != null && !r.getPickupName().isBlank() ? r.getPickupName() : r.getPickUp();
+                    String to = r.getDropoffName() != null && !r.getDropoffName().isBlank() ? r.getDropoffName() : r.getDropOff();
+                    return from + " → " + to;
+                })
                 .orElse("N/A");
 
         HorizontalLayout trajetLayout = new HorizontalLayout();
@@ -466,7 +552,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
 
         // Prix
         String price = getRideById(booking.getRideId())
-                .map(r -> String.format("%.2f €", r.getPrice()))
+                .map(r -> String.format("$%.2f", r.getPrice()))
                 .orElse("N/A");
 
         HorizontalLayout priceLayout = new HorizontalLayout();
@@ -514,45 +600,31 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
                 .set("justify-content", "space-between")
                 .set("margin-top", "auto");
 
-        Button editBtn = new Button("Modifier", VaadinIcon.EDIT.create());
+        Button editBtn = new Button("Edit", VaadinIcon.EDIT.create());
         editBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
         editBtn.getStyle()
                 .set("border-radius", "8px")
                 .set("transition", "all 0.3s ease");
         editBtn.addClickListener(e -> openBookingDialog(booking));
 
-        Button takeBtn = new Button("Valider", VaadinIcon.CHECK_CIRCLE.create());
-        takeBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_SUCCESS);
-        takeBtn.getStyle()
-                .set("border-radius", "8px")
-                .set("transition", "all 0.3s ease");
-        takeBtn.addClickListener(e -> {
-            try {
-                booking.setBookingStatus(BookingStatus.CONFIRMED);
-                updateBooking(booking.getId().toString(), booking);
-                refreshCardsWithData(getAllBookings());
-                AppNotification.success("Réservation validée");
-            } catch (Exception ex) {
-                AppNotification.error("Erreur: " + ex.getMessage());
-            }
-        });
+        // Acceptance is handled by drivers via notifications; users cannot accept here
 
-        Button cancelBtn = new Button("Annuler", VaadinIcon.CLOSE_CIRCLE.create());
+        Button cancelBtn = new Button("Cancel", VaadinIcon.CLOSE_CIRCLE.create());
         cancelBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_ERROR);
         cancelBtn.getStyle()
                 .set("border-radius", "8px")
                 .set("transition", "all 0.3s ease");
         cancelBtn.addClickListener(e -> ConfirmDialog.show(
-                "Annuler la réservation",
-                "Êtes-vous sûr de vouloir annuler cette réservation ?",
-                "Annuler",
+                "Cancel booking",
+                "Are you sure you want to cancel this booking?",
+                "Cancel",
                 () -> {
                     deleteBookingById(booking.getId().toString());
                     refreshCardsWithData(getAllBookings());
-                    AppNotification.success("Réservation annulée");
+                    AppNotification.success("Booking cancelled");
                 }));
 
-        actions.add(editBtn, takeBtn, cancelBtn);
+        actions.add(editBtn, cancelBtn);
 
         card.add(cardHeader, cardContent, actions);
         return card;
@@ -577,7 +649,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
                 .set("margin", "-16px -16px 0 -16px")
                 .set("border-radius", "8px 8px 0 0");
 
-        H3 dialogTitle = new H3(isUpdate ? "✏️ Modifier la réservation" : "➕ Nouvelle réservation");
+        H3 dialogTitle = new H3(isUpdate ? "✏️ Edit booking" : "➕ New booking");
         dialogTitle.getStyle()
                 .set("color", "white")
                 .set("margin", "0")
@@ -589,32 +661,100 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
         FormLayout formLayout = new FormLayout();
         formLayout.getStyle().set("padding", "24px 0");
 
-        TextField rideIdField = new TextField("ID du trajet");
-        rideIdField.setValue(booking.getRideId() != null ? booking.getRideId().toString() : "");
-        rideIdField.setPrefixComponent(VaadinIcon.ROAD.create());
-        rideIdField.getStyle().set("--lumo-border-radius", "8px");
-
-        TextField driverIdField = new TextField("ID du chauffeur (optionnel)");
+        TextField driverIdField = new TextField("Driver ID (optional)");
         String prefillDriver = booking.getDriverId() != null ? booking.getDriverId().toString() : (pendingDriverIdParam != null ? pendingDriverIdParam.toString() : "");
         driverIdField.setValue(prefillDriver);
         driverIdField.setPrefixComponent(VaadinIcon.USER.create());
         driverIdField.getStyle().set("--lumo-border-radius", "8px");
 
-        IntegerField seatsField = new IntegerField("Nombre de places");
+        TextField carIdField = new TextField("Car ID (optional)");
+        String prefillCar = pendingCarIdParam != null ? pendingCarIdParam.toString() : "";
+        carIdField.setValue(prefillCar);
+        carIdField.setPrefixComponent(VaadinIcon.CAR.create());
+        carIdField.getStyle().set("--lumo-border-radius", "8px");
+
+		// Hidden fields to carry coordinates and names
+		TextField dropOffField = new TextField("Destination (coordinates)");
+		dropOffField.setPrefixComponent(VaadinIcon.MAP_MARKER.create());
+		dropOffField.getStyle().set("--lumo-border-radius", "8px");
+
+		TextField pickUpField = new TextField("Pickup (coordinates)");
+		pickUpField.setPrefixComponent(VaadinIcon.LOCATION_ARROW.create());
+		pickUpField.getStyle().set("--lumo-border-radius", "8px");
+		pickUpField.setReadOnly(true);
+
+		TextField pickupNameField = new TextField("Pickup name");
+		pickupNameField.setReadOnly(true);
+		pickupNameField.getStyle().set("--lumo-border-radius", "8px");
+
+		TextField dropoffNameField = new TextField("Destination name");
+		dropoffNameField.setReadOnly(true);
+		dropoffNameField.getStyle().set("--lumo-border-radius", "8px");
+
+		ComboBox<LocationSuggestion> pickupSelect = new ComboBox<>("Pickup");
+		pickupSelect.setClearButtonVisible(true);
+		pickupSelect.setItemLabelGenerator(LocationSuggestion::getLabel);
+		pickupSelect.setWidthFull();
+		pickupSelect.getStyle().set("--lumo-border-radius", "8px");
+
+        DateTimePicker departureField = new DateTimePicker("Departure time");
+        departureField.getStyle().set("--lumo-border-radius", "8px");
+
+        IntegerField seatsField = new IntegerField("Seats");
         seatsField.setMin(1);
         seatsField.setPrefixComponent(VaadinIcon.USERS.create());
         seatsField.getStyle().set("--lumo-border-radius", "8px");
+
+		// No price estimation on client; price is computed server-side
+
+        ComboBox<LocationSuggestion> destinationSelect = new ComboBox<>("Destination");
+        destinationSelect.setClearButtonVisible(true);
+        destinationSelect.setItemLabelGenerator(LocationSuggestion::getLabel);
+        destinationSelect.setWidthFull();
+        destinationSelect.getStyle().set("--lumo-border-radius", "8px");
+		DataProvider<LocationSuggestion, String> placesProvider = DataProvider.fromFilteringCallbacks(
+            (Query<LocationSuggestion, String> q) -> {
+                String filter = q.getFilter().orElse("");
+                java.util.List<LocationSuggestion> all = (filter != null && filter.trim().length() >= 3)
+                    ? searchPlaces(filter.trim())
+                    : java.util.List.of();
+                int offset = q.getOffset();
+                int limit = q.getLimit();
+                return all.stream().skip(offset).limit(limit);
+            },
+            (Query<LocationSuggestion, String> q) -> {
+                String filter = q.getFilter().orElse("");
+                if (filter == null || filter.trim().length() < 3) return 0;
+                return searchPlaces(filter.trim()).size();
+            }
+        );
+		destinationSelect.setDataProvider(placesProvider, (SerializableFunction<String, String>) f -> f);
+		pickupSelect.setDataProvider(placesProvider, (SerializableFunction<String, String>) f -> f);
+		pickupSelect.addValueChangeListener(ev -> {
+			LocationSuggestion sel = ev.getValue();
+			if (sel != null) {
+				pickUpField.setValue(sel.getLat() + "," + sel.getLon());
+				pickupNameField.setValue(sel.getLabel());
+			}
+		});
+		destinationSelect.addValueChangeListener(ev -> {
+			LocationSuggestion sel = ev.getValue();
+			if (sel != null) {
+				// Store coordinates and name for server-side price computation
+				dropOffField.setValue(sel.getLat() + "," + sel.getLon());
+				dropoffNameField.setValue(sel.getLabel());
+			}
+		});
+
+		// No client-side recomputation needed
+
+        // Always creating a new ride in this view
 
         binder.forField(seatsField)
                 .asRequired("Le nombre de places est requis")
                 .bind(RideBookingDto::getSeatsBooked, RideBookingDto::setSeatsBooked);
 
-        binder.forField(rideIdField)
-                .asRequired("L'ID du trajet est requis")
-                .withConverter(
-                        s -> s != null && !s.isEmpty() ? UUID.fromString(s) : null,
-                        u -> u != null ? u.toString() : "")
-                .bind(RideBookingDto::getRideId, RideBookingDto::setRideId);
+        // No ride selection; booking.rideId will be set after ride creation
 
         binder.forField(driverIdField)
                 .withConverter(
@@ -622,9 +762,59 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
                         u -> u != null ? u.toString() : "")
                 .bind(RideBookingDto::getDriverId, RideBookingDto::setDriverId);
 
-        binder.readBean(booking);
+        // Car ID is not part of RideBookingDto, but is part of the Ride being created
+        // We'll use it during ride creation below if provided
 
-        formLayout.add(rideIdField, driverIdField, seatsField);
+		binder.readBean(booking);
+		// Default seats to 1 if empty
+		if (seatsField.isEmpty()) {
+			seatsField.setValue(1);
+		}
+
+		formLayout.add(
+			driverIdField,
+			carIdField,
+			seatsField,
+			pickupSelect,
+			pickupNameField,
+			pickUpField,
+			destinationSelect,
+			dropoffNameField,
+			dropOffField,
+			departureField
+		);
+
+		// Resolve current location button for pickup
+		Button useCurrentLocation = new Button("Use my location", VaadinIcon.LOCATION_ARROW.create());
+		useCurrentLocation.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+		useCurrentLocation.getStyle().set("border-radius", "8px");
+        useCurrentLocation.addClickListener(evt -> {
+            UI.getCurrent().getPage().executeJs(
+                "(function(){ if(!navigator.geolocation) return; navigator.geolocation.getCurrentPosition(function(pos){ var v=pos.coords.latitude+','+pos.coords.longitude; $0.value=v; $0.dispatchEvent(new Event('input',{bubbles:true})); }, function(){}, {enableHighAccuracy:true, maximumAge: 1000, timeout: 8000}); })();",
+                pickUpField
+            );
+        });
+
+        // When pickup coordinates change, reverse geocode to fill name if available
+        pickUpField.addValueChangeListener(ev -> {
+            String v = ev.getValue();
+            if (v != null && v.contains(",")) {
+                try {
+                    String[] p = v.split(",");
+                    double lat = Double.parseDouble(p[0].trim());
+                    double lon = Double.parseDouble(p[1].trim());
+                    String label = reverseGeocodeLabel(lat, lon);
+                    if (label != null && !label.isBlank()) {
+                        pickupNameField.setValue(label);
+                    }
+                } catch (Exception ignored) {}
+            }
+        });
+
+        // Populate drop-off and departure time from rideId
+        // No existing ride info loading necessary
+
+        // Fields are always editable for creating a new ride
 
         ActionButton cancel = ActionButton.createSecondary("Annuler", VaadinIcon.CLOSE);
         cancel.getStyle().set("border-radius", "8px");
@@ -634,20 +824,72 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
         save.getStyle().set("border-radius", "8px");
         save.addClickListener(e -> {
             try {
-                binder.writeBean(booking);
+				binder.writeBean(booking);
+				String pickupCoord = pickUpField.getValue();
+				String dropoffCoord = dropOffField.getValue();
+				boolean ok = pickupCoord != null && pickupCoord.contains(",") && dropoffCoord != null && dropoffCoord.contains(",");
+				if (!ok) {
+					AppNotification.error("Veuillez sélectionner les emplacements de départ et d'arrivée");
+					return;
+				}
                 if (isUpdate) {
                     updateBooking(booking.getId().toString(), booking);
-                    AppNotification.success("Réservation mise à jour");
+                    AppNotification.success("Booking updated");
                 } else {
+                    // Always create ride first, then booking
+					RideDto newRide = new RideDto();
+					// Names and coords
+					newRide.setPickupName(pickupNameField.getValue());
+					try {
+						String pv = pickUpField.getValue();
+						if (pv != null && pv.contains(",")) {
+							String[] p = pv.split(",");
+							newRide.setPickupLat(Double.parseDouble(p[0].trim()));
+							newRide.setPickupLon(Double.parseDouble(p[1].trim()));
+						}
+					} catch (Exception ignored) {}
+					newRide.setDropoffName(dropoffNameField.getValue());
+					try {
+						String dv = dropOffField.getValue();
+						if (dv != null && dv.contains(",")) {
+							String[] d = dv.split(",");
+							newRide.setDropoffLat(Double.parseDouble(d[0].trim()));
+							newRide.setDropoffLon(Double.parseDouble(d[1].trim()));
+						}
+					} catch (Exception ignored) {}
+					// Legacy text values also kept for compatibility
+					newRide.setPickUp(pickUpField.getValue());
+					newRide.setDropOff(dropOffField.getValue());
+                    newRide.setDepartureTime(departureField.getValue());
+					// Price is computed server-side in RideService
+                    try {
+                        String carIdStr = carIdField.getValue();
+                        if (carIdStr != null && !carIdStr.isBlank()) {
+                            newRide.setCarId(UUID.fromString(carIdStr.trim()));
+                        } else if (pendingCarIdParam != null) {
+                            newRide.setCarId(pendingCarIdParam);
+                        }
+                    } catch (IllegalArgumentException ignored) {}
+                    String token = getAuthToken();
+                    RideDto created = webClient.post()
+                        .uri(baseUrl + "/api/rides")
+                        .header("Authorization", token != null ? "Bearer " + token : "")
+                        .bodyValue(newRide)
+                        .retrieve()
+                        .bodyToMono(RideDto.class)
+                        .block();
+                    if (created == null || created.getId() == null) throw new RuntimeException("Ride creation failed");
+                    booking.setRideId(created.getId());
                     createBooking(booking);
-                    AppNotification.success("Réservation créée");
+                    AppNotification.success("Booking created");
+                    UI.getCurrent().getPage().reload();
                 }
                 refreshGrid();
                 dialog.close();
             } catch (ValidationException ex) {
-                AppNotification.error("Veuillez corriger les erreurs");
+                AppNotification.error("Please fix the errors");
             } catch (Exception ex) {
-                AppNotification.error("Erreur: " + ex.getMessage());
+                AppNotification.error("Error: " + ex.getMessage());
             }
         });
 
@@ -656,7 +898,11 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
         buttons.setWidthFull();
         buttons.getStyle().set("padding-top", "16px");
 
-        VerticalLayout layout = new VerticalLayout(dialogHeader, formLayout, buttons);
+		HorizontalLayout locationActions = new HorizontalLayout(useCurrentLocation);
+		locationActions.setWidthFull();
+		locationActions.setJustifyContentMode(FlexComponent.JustifyContentMode.START);
+
+		VerticalLayout layout = new VerticalLayout(dialogHeader, formLayout, locationActions, buttons);
         layout.setPadding(false);
         layout.setSpacing(false);
         layout.getStyle()
@@ -689,12 +935,37 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
             event.rerouteTo(com.example.view.auth.LoginView.class);
             return;
         }
-        String driverId = event.getLocation().getQueryParameters().getParameters().getOrDefault("driverId", java.util.List.of()).stream().findFirst().orElse(null);
+        var params = event.getLocation().getQueryParameters().getParameters();
+        String driverId = params.getOrDefault("driverId", java.util.List.of()).stream().findFirst().orElse(null);
+        String carId = params.getOrDefault("carId", java.util.List.of()).stream().findFirst().orElse(null);
         try {
             this.pendingDriverIdParam = driverId != null ? UUID.fromString(driverId) : null;
+            this.pendingCarIdParam = carId != null ? UUID.fromString(carId) : null;
         } catch (IllegalArgumentException ex) {
             this.pendingDriverIdParam = null;
+            this.pendingCarIdParam = null;
         }
+        // If a driverId is present, open the new booking dialog immediately prefilled
+        if (this.pendingDriverIdParam != null) {
+            this.openDialogOnAttach = true;
+        }
+    }
+
+    @Override
+    protected void onAttach(AttachEvent attachEvent) {
+        super.onAttach(attachEvent);
+        if (openDialogOnAttach) {
+            openDialogOnAttach = false;
+            RideBookingDto draft = new RideBookingDto();
+            draft.setDriverId(this.pendingDriverIdParam);
+            openBookingDialog(draft);
+        }
+    }
+
+    @Override
+    protected void onDetach(com.vaadin.flow.component.DetachEvent detachEvent) {
+        super.onDetach(detachEvent);
+        if (bookingUiReg != null) { bookingUiReg.remove(); bookingUiReg = null; }
     }
 
     private void refreshGrid() {
@@ -709,15 +980,15 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
     }
 
     private String getAuthToken() {
-        Cookie[] cookies = VaadinService.getCurrentRequest().getCookies();
-        if (cookies != null) {
-            return Arrays.stream(cookies)
-                    .filter(cookie -> "AUTH".equals(cookie.getName()))
-                    .map(Cookie::getValue)
-                    .findFirst()
-                    .orElse(null);
-        }
-        return null;
+        var req = VaadinService.getCurrentRequest();
+        if (req == null) return null;
+        Cookie[] cookies = req.getCookies();
+        if (cookies == null) return null;
+        return Arrays.stream(cookies)
+                .filter(cookie -> "AUTH".equals(cookie.getName()))
+                .map(Cookie::getValue)
+                .findFirst()
+                .orElse(null);
     }
 
     private List<RideBookingDto> getAllBookings() {
@@ -727,7 +998,8 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
                     .uri(baseUrl + "/api/bookings")
                     .header("Authorization", token != null ? "Bearer " + token : "")
                     .retrieve()
-                    .bodyToFlux(RideBookingDto.class);
+                    .bodyToFlux(RideBookingDto.class)
+                    .onErrorResume(e -> reactor.core.publisher.Flux.empty());
             return bookingsFlux.collectList().block();
         } catch (Exception e) {
             AppNotification.error("Error loading bookings: " + e.getMessage());

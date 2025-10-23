@@ -10,6 +10,8 @@ import com.example.model.Notification;
 @Repository
 public interface NotificationRepository extends BaseRepository<Notification, UUID> {
     List<Notification> findByUserIdOrderByCreatedAtDesc(UUID userId);
+    void deleteByUserIdAndRelatedId(UUID userId, UUID relatedId);
+    void deleteByRelatedId(UUID relatedId);
 }
 
 

@@ -20,7 +20,7 @@ import com.vaadin.flow.router.Route;
 import com.vaadin.flow.server.VaadinService;
 import jakarta.annotation.security.RolesAllowed;
 
-@Route("driver/cars")
+@Route(value = "driver/cars", layout = com.example.view.layout.MainLayout.class)
 @PageTitle("My Cars")
 @RolesAllowed({"Driver"})
 public class DriverCarsView extends VerticalLayout implements BeforeEnterObserver {
@@ -60,8 +60,10 @@ public class DriverCarsView extends VerticalLayout implements BeforeEnterObserve
 
     private void refresh() {
         try {
+            String token = readAuthTokenFromCookie();
             var list = webClient.get()
                 .uri(baseUrl + "/api/cars/my")
+                .headers(h -> { if (token != null && !token.isEmpty()) h.set("Authorization", "Bearer " + token); })
                 .retrieve()
                 .bodyToFlux(CarDto.class)
                 .collectList()
@@ -79,8 +81,10 @@ public class DriverCarsView extends VerticalLayout implements BeforeEnterObserve
             dto.setModel(model);
             dto.setLicensePlate(plate);
             dto.setCarValidated(false);
+            String token = readAuthTokenFromCookie();
             webClient.post()
                 .uri(baseUrl + "/api/cars/my")
+                .headers(h -> { if (token != null && !token.isEmpty()) h.set("Authorization", "Bearer " + token); })
                 .bodyValue(dto)
                 .retrieve()
                 .bodyToMono(CarDto.class)
@@ -90,6 +94,16 @@ public class DriverCarsView extends VerticalLayout implements BeforeEnterObserve
         } catch (Exception ex) {
             Notification.show("Create failed", 3000, Notification.Position.TOP_END).addThemeVariants(NotificationVariant.LUMO_ERROR);
         }
+    }
+
+    private String readAuthTokenFromCookie() {
+        var req = VaadinService.getCurrentRequest();
+        if (req == null || req.getCookies() == null) return null;
+        return java.util.Arrays.stream(req.getCookies())
+            .filter(c -> "AUTH".equals(c.getName()))
+            .map(c -> c.getValue())
+            .findFirst()
+            .orElse(null);
     }
 
     @Override

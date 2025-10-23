@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -80,6 +81,17 @@ public class CarsController extends BaseController<Car, CarDto> {
         UUID uuid = UUID.fromString(id);
         carsService.deleteById(uuid);
         return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/validate")
+    @PreAuthorize("hasRole('Admin')")
+    public ResponseEntity<CarDto> validateCar(@PathVariable("id") String id) {
+        UUID uuid = UUID.fromString(id);
+        Car car = carsService.findById(uuid).orElse(null);
+        if (car == null) return ResponseEntity.notFound().build();
+        car.setCarValidated(true);
+        Car saved = carsService.save(car);
+        return ResponseEntity.ok(toDto(saved));
     }
 
     // Driver self-service endpoints

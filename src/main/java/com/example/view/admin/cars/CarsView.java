@@ -29,12 +29,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
-
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.Cookie;
 import java.util.Arrays;
 import java.util.List;
 
-@Route("admin/cars")
+@RolesAllowed({"Admin"})
+@Route(value = "admin/cars", layout = com.example.view.layout.MainLayout.class)
 public class CarsView extends VerticalLayout {
 
     private final WebClient webClient;
@@ -230,12 +231,18 @@ public class CarsView extends VerticalLayout {
             editBtn.getStyle().set("color", "#6366f1");
             editBtn.addClickListener(e -> openCarDialog(car));
             
+            Button validateBtn = new Button(VaadinIcon.CHECK_CIRCLE.create());
+            validateBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_SUCCESS);
+            validateBtn.getStyle().set("color", "#10b981");
+            validateBtn.setEnabled(!car.isCarValidated());
+            validateBtn.addClickListener(e -> validateCar(car));
+
             Button deleteBtn = new Button(VaadinIcon.TRASH.create());
             deleteBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
             deleteBtn.getStyle().set("color", "#ef4444");
             deleteBtn.addClickListener(e -> deleteCar(car));
             
-            actions.add(editBtn, deleteBtn);
+            actions.add(editBtn, validateBtn, deleteBtn);
             return actions;
         }).setHeader("Actions").setFlexGrow(0).setWidth("120px");
         
@@ -440,6 +447,22 @@ public class CarsView extends VerticalLayout {
                 .block();
         } catch (Exception e) {
             showNotification("Error deleting car: " + e.getMessage(), NotificationVariant.LUMO_ERROR);
+        }
+    }
+
+    private void validateCar(CarDto car) {
+        try {
+            String token = getAuthToken();
+            webClient.patch()
+                .uri(baseUrl + "/api/cars/" + car.getId() + "/validate")
+                .header("Authorization", token != null ? "Bearer " + token : "")
+                .retrieve()
+                .bodyToMono(CarDto.class)
+                .block();
+            showNotification("Vehicle validated", NotificationVariant.LUMO_SUCCESS);
+            refreshGrid();
+        } catch (Exception e) {
+            showNotification("Error validating car: " + e.getMessage(), NotificationVariant.LUMO_ERROR);
         }
     }
 

@@ -23,6 +23,10 @@ public class RideBookingDto {
     public void setSeatsBooked(Integer seatsBooked) { this.seatsBooked = seatsBooked; }
     public BookingStatus getBookingStatus() { return bookingStatus; }
     public void setBookingStatus(BookingStatus bookingStatus) { this.bookingStatus = bookingStatus; }
+
+    // Proxy accessors to support generic mapper copying entity.getStatus() -> dto.setStatus()
+    public BookingStatus getStatus() { return bookingStatus; }
+    public void setStatus(BookingStatus status) { this.bookingStatus = status; }
     public List<UUID> getPassengerIds() { return passengerIds; }
     public void setPassengerIds(List<UUID> passengerIds) { this.passengerIds = passengerIds; }
 }

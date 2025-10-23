@@ -6,7 +6,13 @@ import java.util.UUID;
 public class RideDto {
     private UUID id;
     private UUID carId;
+    private String pickupName;
+    private Double pickupLat;
+    private Double pickupLon;
     private String pickUp;
+    private String dropoffName;
+    private Double dropoffLat;
+    private Double dropoffLon;
     private String dropOff;
     private LocalDateTime departureTime;
     private double price;
@@ -27,12 +33,60 @@ public class RideDto {
         this.carId = carId;
     }
 
+    public String getPickupName() {
+        return pickupName;
+    }
+
+    public void setPickupName(String pickupName) {
+        this.pickupName = pickupName;
+    }
+
+    public Double getPickupLat() {
+        return pickupLat;
+    }
+
+    public void setPickupLat(Double pickupLat) {
+        this.pickupLat = pickupLat;
+    }
+
+    public Double getPickupLon() {
+        return pickupLon;
+    }
+
+    public void setPickupLon(Double pickupLon) {
+        this.pickupLon = pickupLon;
+    }
+
     public String getPickUp() {
         return pickUp;
     }
 
     public void setPickUp(String pickUp) {
         this.pickUp = pickUp;
+    }
+
+    public String getDropoffName() {
+        return dropoffName;
+    }
+
+    public void setDropoffName(String dropoffName) {
+        this.dropoffName = dropoffName;
+    }
+
+    public Double getDropoffLat() {
+        return dropoffLat;
+    }
+
+    public void setDropoffLat(Double dropoffLat) {
+        this.dropoffLat = dropoffLat;
+    }
+
+    public Double getDropoffLon() {
+        return dropoffLon;
+    }
+
+    public void setDropoffLon(Double dropoffLon) {
+        this.dropoffLon = dropoffLon;
     }
 
     public String getDropOff() {

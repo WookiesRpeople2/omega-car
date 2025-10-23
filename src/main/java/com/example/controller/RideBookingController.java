@@ -8,6 +8,8 @@ import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,13 +29,17 @@ import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/api/bookings")
 @Validated
-@PreAuthorize("hasRole('Admin')")
+@PreAuthorize("hasAnyRole('User','Admin')")
 public class RideBookingController extends BaseController<RideBooking, RideBookingDto> {
 
     private final RideBookingService rideBookingService;
+    private final com.example.service.DriverLocationService driverLocationService;
+    private final com.example.repository.UserRepository users;
 
-    public RideBookingController(RideBookingService rideBookingService) {
+    public RideBookingController(RideBookingService rideBookingService, com.example.service.DriverLocationService driverLocationService, com.example.repository.UserRepository users) {
         this.rideBookingService = rideBookingService;
+        this.driverLocationService = driverLocationService;
+        this.users = users;
     }
 
     @GetMapping
@@ -56,6 +62,20 @@ public class RideBookingController extends BaseController<RideBooking, RideBooki
     @PostMapping
     @PreAuthorize("hasAnyRole('User','Admin')")
     public ResponseEntity<RideBookingDto> create(@Valid @RequestBody RideBookingDto request) {
+        // Basic validation
+        if (request.getRideId() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (request.getSeatsBooked() == null || request.getSeatsBooked() <= 0) {
+            return ResponseEntity.badRequest().build();
+        }
+        // Ensure driver is online if specified
+        if (request.getDriverId() != null) {
+            var loc = driverLocationService.getLocation(request.getDriverId());
+            if (loc == null) {
+                return ResponseEntity.status(409).build();
+            }
+        }
         RideBooking saved = rideBookingService.createBooking(fromDtoPartial(request));
         return ResponseEntity.created(URI.create("/api/bookings/" + saved.getId())).body(toDto(saved));
     }
@@ -79,6 +99,15 @@ public class RideBookingController extends BaseController<RideBooking, RideBooki
     @PreAuthorize("hasAnyRole('Driver','Admin')")
     public ResponseEntity<RideBookingDto> accept(@PathVariable("id") String id) {
         UUID uuid = UUID.fromString(id);
+        // Only the assigned driver can accept
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) return ResponseEntity.status(401).build();
+        var currentUserOpt = users.findByEmail(auth.getName());
+        var bookingOpt = rideBookingService.getBooking(uuid);
+        if (bookingOpt.isEmpty()) return ResponseEntity.notFound().build();
+        if (currentUserOpt.isEmpty() || bookingOpt.get().getDriverId() == null || !bookingOpt.get().getDriverId().equals(currentUserOpt.get().getId())) {
+            return ResponseEntity.status(403).build();
+        }
         RideBooking updated = new RideBooking();
         updated.setStatus(BookingStatus.CONFIRMED);
         try {
@@ -93,6 +122,15 @@ public class RideBookingController extends BaseController<RideBooking, RideBooki
     @PreAuthorize("hasAnyRole('Driver','Admin')")
     public ResponseEntity<RideBookingDto> decline(@PathVariable("id") String id) {
         UUID uuid = UUID.fromString(id);
+        // Only the assigned driver can decline
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) return ResponseEntity.status(401).build();
+        var currentUserOpt = users.findByEmail(auth.getName());
+        var bookingOpt = rideBookingService.getBooking(uuid);
+        if (bookingOpt.isEmpty()) return ResponseEntity.notFound().build();
+        if (currentUserOpt.isEmpty() || bookingOpt.get().getDriverId() == null || !bookingOpt.get().getDriverId().equals(currentUserOpt.get().getId())) {
+            return ResponseEntity.status(403).build();
+        }
         RideBooking updated = new RideBooking();
         updated.setStatus(BookingStatus.CANCELLED);
         try {

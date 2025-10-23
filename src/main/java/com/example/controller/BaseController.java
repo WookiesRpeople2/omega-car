@@ -79,7 +79,17 @@ public abstract class BaseController<T, U> {
                 continue;
             }
             Class<?> paramType = setter.getParameterTypes()[0];
-            if (value == null || paramType.isAssignableFrom(value.getClass())) {
+            if (value == null) {
+                setter.invoke(target, value);
+                continue;
+            }
+            Class<?> valueType = value.getClass();
+            boolean assignable = paramType.isAssignableFrom(valueType);
+            if (!assignable && paramType.isPrimitive()) {
+                Class<?> wrapper = primitiveToWrapper(paramType);
+                assignable = wrapper != null && wrapper.isAssignableFrom(valueType);
+            }
+            if (assignable) {
                 setter.invoke(target, value);
             }
         }
@@ -97,6 +107,18 @@ public abstract class BaseController<T, U> {
 
     private static String normalize(String name) {
         return name.replace("_", "").toLowerCase(Locale.ROOT);
+    }
+
+    private static Class<?> primitiveToWrapper(Class<?> primitive) {
+        if (primitive == boolean.class) return Boolean.class;
+        if (primitive == byte.class) return Byte.class;
+        if (primitive == short.class) return Short.class;
+        if (primitive == int.class) return Integer.class;
+        if (primitive == long.class) return Long.class;
+        if (primitive == float.class) return Float.class;
+        if (primitive == double.class) return Double.class;
+        if (primitive == char.class) return Character.class;
+        return null;
     }
 
     @SuppressWarnings("unchecked")

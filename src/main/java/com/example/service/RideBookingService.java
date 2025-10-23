@@ -22,10 +22,13 @@ public class RideBookingService {
     private final ApplicationEventPublisher eventPublisher;
     private final NotificationService notificationService;
 
-    public RideBookingService(RideBookingRepository rideBookingRepository, ApplicationEventPublisher eventPublisher, NotificationService notificationService) {
+    private final RideBookingUiBroadcaster uiBroadcaster;
+
+    public RideBookingService(RideBookingRepository rideBookingRepository, ApplicationEventPublisher eventPublisher, NotificationService notificationService, RideBookingUiBroadcaster uiBroadcaster) {
         this.rideBookingRepository = rideBookingRepository;
         this.eventPublisher = eventPublisher;
         this.notificationService = notificationService;
+        this.uiBroadcaster = uiBroadcaster;
     }
 
     @Transactional
@@ -37,11 +40,12 @@ public class RideBookingService {
             notificationService.create(
                 saved.getDriverId(),
                 NotificationType.RIDE_BOOKED,
-                "New ride booking",
+                saved.getId().toString(),
                 "A passenger created a booking and assigned you as driver",
                 saved.getId()
             );
         }
+        uiBroadcaster.broadcast(new RideBookingUiBroadcaster.BookingStatusChangedEvent(saved.getId(), saved.getStatus().name()));
         return saved;
     }
 
@@ -68,18 +72,24 @@ public class RideBookingService {
                 // Notify passengers of acceptance
                 if (saved.getPassengerIds() != null) {
                     for (var pid : saved.getPassengerIds()) {
-                        notificationService.create(pid, NotificationType.RIDE_ACCEPTED, "Ride accepted", "Your ride booking was accepted", saved.getId());
+                        notificationService.create(pid, NotificationType.RIDE_ACCEPTED, saved.getId().toString(), "Your ride booking was accepted", saved.getId());
                     }
                 }
+                if (saved.getDriverId() != null) {
+                    notificationService.deleteByRelated(saved.getId());
+                }
             } else if (saved.getStatus() == BookingStatus.CANCELLED) {
-                // Notify passengers of decline
                 if (saved.getPassengerIds() != null) {
                     for (var pid : saved.getPassengerIds()) {
-                        notificationService.create(pid, NotificationType.RIDE_DECLINED, "Ride declined", "Your ride booking was declined", saved.getId());
+                        notificationService.create(pid, NotificationType.RIDE_DECLINED, saved.getId().toString(), "Your ride booking was declined", saved.getId());
                     }
+                }
+                if (saved.getDriverId() != null) {
+                    notificationService.deleteByRelated(saved.getId());
                 }
             }
         }
+        uiBroadcaster.broadcast(new RideBookingUiBroadcaster.BookingStatusChangedEvent(saved.getId(), saved.getStatus().name()));
         return saved;
     }
 

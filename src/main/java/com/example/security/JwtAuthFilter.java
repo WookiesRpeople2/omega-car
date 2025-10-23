@@ -29,7 +29,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
   protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
     if (SecurityContextHolder.getContext().getAuthentication() == null) {
-      String token = readAuthCookie(request);
+      String token = readBearerHeader(request);
+      if (token == null) {
+        token = readAuthCookie(request);
+      }
       if (token != null) {
         try {
           Map<String, Object> claims = jwtService.parseEncryptedJwt(token);
@@ -59,6 +62,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
       if ("AUTH".equals(c.getName())) {
         return c.getValue();
       }
+    }
+    return null;
+  }
+
+  private String readBearerHeader(HttpServletRequest request) {
+    String auth = request.getHeader("Authorization");
+    if (auth == null) return null;
+    if (auth.startsWith("Bearer ")) {
+      return auth.substring(7).trim();
     }
     return null;
   }

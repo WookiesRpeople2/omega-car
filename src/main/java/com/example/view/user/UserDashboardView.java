@@ -25,7 +25,7 @@ import com.vaadin.flow.router.Route;
 import com.vaadin.flow.server.VaadinService;
 import jakarta.annotation.security.RolesAllowed;
 
-@Route("user")
+@Route(value = "user", layout = com.example.view.layout.MainLayout.class)
 @PageTitle("User Dashboard")
 @RolesAllowed({"User"})
 public class UserDashboardView extends VerticalLayout implements BeforeEnterObserver {
@@ -122,7 +122,7 @@ public class UserDashboardView extends VerticalLayout implements BeforeEnterObse
 
         List<DriverLocationEvent> actives = driverLocationService.getAllActiveDrivers();
         for (DriverLocationEvent e : actives) {
-            upsertMarker(e.getDriverId(), e.getLatitude(), e.getLongitude());
+            upsertMarker(e.getDriverId(), e.getLatitude(), e.getLongitude(), e.getCarId());
         }
 
         registration = broadcaster.register(evt -> {
@@ -133,7 +133,7 @@ public class UserDashboardView extends VerticalLayout implements BeforeEnterObse
                     removeMarker(off.getDriverId());
                 } else if (evt instanceof com.example.dto.DriverLocationEvent) {
                     com.example.dto.DriverLocationEvent e = (com.example.dto.DriverLocationEvent) evt;
-                    upsertMarker(e.getDriverId(), e.getLatitude(), e.getLongitude());
+                    upsertMarker(e.getDriverId(), e.getLatitude(), e.getLongitude(), e.getCarId());
                 }
             });
         });
@@ -152,33 +152,59 @@ public class UserDashboardView extends VerticalLayout implements BeforeEnterObse
         UI ui = UI.getCurrent();
         ui.getPage().addStyleSheet("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
         ui.getPage().addJavaScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
-        ui.getPage().executeJs("window.__initLeafletMap = window.__initLeafletMap || ((id) => {\n" +
-            " if (!window.__maps) window.__maps = {};\n" +
-            " if (window.__maps[id]) return;\n" +
-            " const m = L.map(id).setView([48.8566, 2.3522], 12);\n" +
-            " L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(m);\n" +
-            " const carIcon = L.icon({ iconUrl: 'https://twemoji.maxcdn.com/v/latest/72x72/1f697.png', iconSize: [36,36], iconAnchor:[18,18] });\n" +
-            " window.__maps[id] = { map: m, markers: {}, carIcon };\n" +
-            "});");
-        ui.getPage().executeJs("window.__upsertDriverMarker = window.__upsertDriverMarker || ((id, driverId, lat, lng) => {\n" +
-            " const ctx = window.__maps && window.__maps[id]; if (!ctx) return;\n" +
-            " const key = String(driverId);\n" +
-            " let mk = ctx.markers[key];\n" +
-            " if (!mk) { mk = L.marker([lat, lng], { icon: ctx.carIcon }).addTo(ctx.map); mk.on('click', () => { window.location.href = '/bookings?driverId=' + key; }); ctx.markers[key] = mk; } else { mk.setLatLng([lat, lng]); }\n" +
-            "});");
-        ui.getPage().executeJs("window.__initLeafletMap($0);", mapElementId);
+		// Ensure Leaflet (window.L) is available before initializing map and markers.
+		ui.getPage().executeJs("window.__omegaEnsureLeafletReady = window.__omegaEnsureLeafletReady || ((cb)=>{if(window.L){cb();}else{let i=0;const t=setInterval(()=>{if(window.L){clearInterval(t);cb();}if(++i>200){clearInterval(t);}},50);}});");
+		ui.getPage().executeJs("window.__initLeafletMap = window.__initLeafletMap || ((id) => {\n" +
+			" if (!window.__maps) window.__maps = {};\n" +
+			" if (window.__maps[id]) return;\n" +
+			" const m = L.map(id).setView([48.8566, 2.3522], 12);\n" +
+			" L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(m);\n" +
+			" const carIcon = L.icon({ iconUrl: 'https://twemoji.maxcdn.com/v/latest/72x72/1f697.png', iconSize: [36,36], iconAnchor:[18,18] });\n" +
+			" window.__maps[id] = { map: m, markers: {}, carIcon };\n" +
+			"});");
+        ui.getPage().executeJs("window.__upsertDriverMarker = window.__upsertDriverMarker || ((id, driverId, lat, lng, carId) => {\n" +
+			" const attempt = () => {\n" +
+			"   const ctx = window.__maps && window.__maps[id];\n" +
+			"   if (!ctx) { setTimeout(attempt, 100); return; }\n" +
+			"   const key = String(driverId);\n" +
+			"   let mk = ctx.markers[key];\n" +
+			"   if (!mk) { mk = L.marker([lat, lng], { icon: ctx.carIcon }).addTo(ctx.map);\n" +
+			"     mk.on('click', async () => {\n" +
+			"       try {\n" +
+			"         const resp = await fetch('/api/driver-locations/' + key, { credentials: 'include' });\n" +
+			"         if (resp && resp.ok) { window.location.href = '/bookings?driverId=' + key + (carId ? ('&carId=' + carId) : ''); }\n" +
+			"         else { const n=document.createElement('vaadin-notification'); n.renderer = function(root){ root.textContent = 'Driver is offline. Booking disabled.'; }; n.duration=3000; document.body.appendChild(n); n.opened=true; }\n" +
+			"       } catch (e) {}\n" +
+			"     });\n" +
+			"     ctx.markers[key] = mk;\n" +
+			"   } else { mk.setLatLng([lat, lng]); }\n" +
+			" };\n" +
+			" attempt();\n" +
+			"});");
+		ui.getPage().executeJs("window.__removeDriverMarker = window.__removeDriverMarker || ((id, driverId) => {\n" +
+			" const attempt = () => {\n" +
+			"   const ctx = window.__maps && window.__maps[id];\n" +
+			"   if (!ctx) { setTimeout(attempt, 100); return; }\n" +
+			"   const key = String(driverId);\n" +
+			"   const mk = ctx.markers[key];\n" +
+			"   if (mk) { ctx.map.removeLayer(mk); delete ctx.markers[key]; }\n" +
+			" };\n" +
+			" attempt();\n" +
+			"});");
+		ui.getPage().executeJs("window.__omegaEnsureLeafletReady(()=>window.__initLeafletMap($0));", mapElementId);
     }
 
     private void upsertMarker(UUID driverId, double lat, double lng) {
-        UI.getCurrent().getPage().executeJs("window.__upsertDriverMarker($0, $1, $2, $3);", mapElementId, driverId.toString(), lat, lng);
+        UI.getCurrent().getPage().executeJs("window.__upsertDriverMarker($0, $1, $2, $3, $4);", mapElementId, driverId.toString(), lat, lng, null);
     }
 
-    private void removeMarker(UUID driverId) {
-        UI.getCurrent().getPage().executeJs(
-            "(id, driverId)=>{const ctx=window.__maps && window.__maps[id]; if(!ctx) return; const key=String(driverId); const mk=ctx.markers[key]; if(mk){ctx.map.removeLayer(mk); delete ctx.markers[key];}}",
-            mapElementId, driverId.toString()
-        );
+    private void upsertMarker(UUID driverId, double lat, double lng, java.util.UUID carId) {
+        UI.getCurrent().getPage().executeJs("window.__upsertDriverMarker($0, $1, $2, $3, $4);", mapElementId, driverId.toString(), lat, lng, carId != null ? carId.toString() : null);
     }
+
+	private void removeMarker(UUID driverId) {
+		UI.getCurrent().getPage().executeJs("window.__removeDriverMarker($0, $1);", mapElementId, driverId.toString());
+	}
 
     @Override
     public void beforeEnter(BeforeEnterEvent event) {
@@ -193,4 +219,3 @@ public class UserDashboardView extends VerticalLayout implements BeforeEnterObse
         }
     }
 }
-

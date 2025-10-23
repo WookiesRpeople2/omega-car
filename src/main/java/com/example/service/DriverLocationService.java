@@ -28,6 +28,9 @@ public class DriverLocationService {
         redisTemplate.opsForHash().put(key, "lat", event.getLatitude());
         redisTemplate.opsForHash().put(key, "lng", event.getLongitude());
         redisTemplate.opsForHash().put(key, "ts", event.getTimestamp().toEpochMilli());
+        if (event.getCarId() != null) {
+            redisTemplate.opsForHash().put(key, "car", event.getCarId().toString());
+        }
         redisTemplate.expire(key, TTL);
     }
 
@@ -39,6 +42,10 @@ public class DriverLocationService {
         e.setDriverId(driverId);
         e.setLatitude(((Number) map.getOrDefault("lat", 0d)).doubleValue());
         e.setLongitude(((Number) map.getOrDefault("lng", 0d)).doubleValue());
+        Object car = map.get("car");
+        if (car instanceof String s && !s.isBlank()) {
+            try { e.setCarId(java.util.UUID.fromString(s)); } catch (IllegalArgumentException ignored) {}
+        }
         Object ts = map.get("ts");
         if (ts instanceof Number n) {
             e.setTimestamp(java.time.Instant.ofEpochMilli(n.longValue()));
