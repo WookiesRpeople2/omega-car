@@ -31,6 +31,15 @@ public class RideBookingService {
         this.uiBroadcaster = uiBroadcaster;
     }
 
+    public void broadcastNavTarget(java.util.UUID bookingId, java.util.UUID driverId, String target, double lat, double lon) {
+        uiBroadcaster.broadcast(new RideBookingUiBroadcaster.NavigationTargetChangedEvent(bookingId, driverId, target, lat, lon));
+    }
+
+    @Transactional(readOnly = true)
+    public List<RideBooking> getByDriver(UUID driverId) {
+        return rideBookingRepository.findByDriverIdOrderByCreatedAtDesc(driverId);
+    }
+
     @Transactional
     public RideBooking createBooking(RideBooking booking) {
         booking.setStatus(BookingStatus.PENDING);
@@ -63,6 +72,12 @@ public class RideBookingService {
     public RideBooking updateBooking(UUID id, RideBooking updatedBooking) throws IllegalAccessException {
         if (!rideBookingRepository.existsById(id)) {
             throw new EntityNotFoundException("RideBooking not found");
+        }
+        // Preserve seatsBooked when the update does not explicitly set a positive value
+        RideBooking existing = rideBookingRepository.findById(id)
+            .orElseThrow(() -> new EntityNotFoundException("RideBooking not found"));
+        if (updatedBooking.getSeatsBooked() == 0) {
+            updatedBooking.setSeatsBooked(existing.getSeatsBooked());
         }
         RideBooking saved = rideBookingRepository.updateValues(id, updatedBooking);
         if (saved.getDriverId() != null) {

@@ -34,10 +34,12 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
 import jakarta.servlet.http.Cookie;
+import jakarta.annotation.security.RolesAllowed;
 import java.util.Arrays;
 import java.util.UUID;
 import java.util.List;
 
+@RolesAllowed({"Admin"})
 @Route("admin/bookings")
 public class RideBookingView extends VerticalLayout {
 

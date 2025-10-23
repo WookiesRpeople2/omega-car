@@ -624,14 +624,32 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
                     AppNotification.success("Booking cancelled");
                 }));
 
-        actions.add(editBtn, cancelBtn);
+        // Picked up button: appears if booking is confirmed and driver near pickup (simplified UI-only gate)
+        Button pickedUpBtn = new Button("Picked up", VaadinIcon.CAR.create());
+        pickedUpBtn.addThemeVariants(ButtonVariant.LUMO_SUCCESS, ButtonVariant.LUMO_SMALL);
+        pickedUpBtn.getStyle().set("border-radius", "8px");
+        pickedUpBtn.setVisible(booking.getBookingStatus() == com.example.model.BookingStatus.CONFIRMED);
+        pickedUpBtn.addClickListener(e -> {
+            try {
+                String token = getAuthToken();
+                webClient.post()
+                    .uri(baseUrl + "/api/bookings/" + booking.getId() + "/picked-up")
+                    .header("Authorization", token != null ? "Bearer " + token : "")
+                    .retrieve()
+                    .bodyToMono(RideBookingDto.class)
+                    .block();
+                AppNotification.success("Navigation updated for driver");
+                pickedUpBtn.setVisible(false);
+            } catch (Exception ex) {
+                AppNotification.error("Failed to mark picked up");
+            }
+        });
+
+        actions.add(editBtn, cancelBtn, pickedUpBtn);
 
         card.add(cardHeader, cardContent, actions);
         return card;
     }
-
-    // La méthode createGrid a été remplacée par createBookingCard et
-    // createCardsContainer
 
     private void openBookingDialog(RideBookingDto booking) {
         Dialog dialog = new Dialog();
@@ -641,7 +659,6 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
 
         boolean isUpdate = booking.getId() != null;
 
-        // En-tête du dialogue
         Div dialogHeader = new Div();
         dialogHeader.getStyle()
                 .set("padding", "24px 24px 16px 24px")
@@ -882,7 +899,7 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
                     booking.setRideId(created.getId());
                     createBooking(booking);
                     AppNotification.success("Booking created");
-                    UI.getCurrent().getPage().reload();
+                    UI.getCurrent().getPage().executeJs("window.location.href = window.location.pathname");
                 }
                 refreshGrid();
                 dialog.close();

@@ -32,6 +32,22 @@ public class RideBookingUiBroadcaster {
         public java.util.UUID getBookingId() { return bookingId; }
         public String getStatus() { return status; }
     }
+
+    public static class NavigationTargetChangedEvent {
+        private final java.util.UUID bookingId;
+        private final java.util.UUID driverId;
+        private final String target; // PICKUP or DROPOFF
+        private final double lat;
+        private final double lon;
+        public NavigationTargetChangedEvent(java.util.UUID bookingId, java.util.UUID driverId, String target, double lat, double lon) {
+            this.bookingId = bookingId; this.driverId = driverId; this.target = target; this.lat = lat; this.lon = lon;
+        }
+        public java.util.UUID getBookingId() { return bookingId; }
+        public java.util.UUID getDriverId() { return driverId; }
+        public String getTarget() { return target; }
+        public double getLat() { return lat; }
+        public double getLon() { return lon; }
+    }
 }
 
 

@@ -9,7 +9,7 @@ import com.vaadin.flow.server.VaadinService;
 import com.vaadin.flow.server.auth.AnonymousAllowed;
 
 @AnonymousAllowed
-@Route("")
+@Route("/")
 public class HomeView extends VerticalLayout implements BeforeEnterObserver {
 
     @Override

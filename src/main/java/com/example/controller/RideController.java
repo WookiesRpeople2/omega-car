@@ -27,7 +27,7 @@ import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/api/rides")
 @Validated
-@PreAuthorize("hasAnyRole('User','Admin')")
+@PreAuthorize("hasAnyRole('User','Driver','Admin')")
 public class RideController extends BaseController<Ride, RideDto> {
 
     private final RideService rideService;

@@ -29,7 +29,7 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<AuthResponseDto> signup(@Valid @RequestBody SignupRequestDto request) {
         try {
-            System.out.println(request);
+            System.out.println(request.getEmail());
             userService.signup(
                 request.getFirstName(),
                 request.getLastName(),

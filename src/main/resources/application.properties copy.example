@@ -8,8 +8,18 @@ spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
 spring.jpa.database-platform=org.hibernate.dialect.MySQLDialect
 
-jwt.signing.secret=
-jwt.aes.key=
+app.base-url=http://localhost:8080
+
+spring.redis.host=localhost
+spring.redis.port=6379
+
+app.kafka.bootstrap-servers=localhost:9092
+app.kafka.group-id=omega-car
+app.kafka.topics.driver-location=driver-location
+
+jwt.signing.secret=VD9O6Yo2IqJM+vkHPAAtGsRGRub861blqpuKY+nqz4UuzuKQSUlBslAeYvdzR9ibNhqCc+GjpF4cWDqXy4NpKg==
+jwt.aes.key=B4N8/WVH262VzWnyUCMCRGqWK8jIgsntLn7LNFI5Y8A=
+
 
 spring.mail.host=localhost
 spring.mail.port=1025

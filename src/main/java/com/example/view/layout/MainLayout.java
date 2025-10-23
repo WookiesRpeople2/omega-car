@@ -7,6 +7,7 @@ import com.example.view.admin.cars.CarsView;
 import com.example.view.admin.ride_booking.RideBookingView;
 import com.example.view.driver.DriverCarsView;
 import com.example.view.driver.DriverDashboardView;
+import com.example.view.driver.DriverBookingsView;
 import com.example.view.driver.NotificationsView;
 import com.example.view.user.UserDashboardView;
 import com.example.view.user.ride_booking.UserRideBookingView;
@@ -66,6 +67,7 @@ public class MainLayout extends AppLayout {
         if ("Driver".equalsIgnoreCase(role)) {
             menu.add(new RouterLink("Driver Dashboard", DriverDashboardView.class));
             menu.add(new RouterLink("My Cars", DriverCarsView.class));
+            menu.add(new RouterLink("My Bookings", DriverBookingsView.class));
             menu.add(new RouterLink("Notifications", NotificationsView.class));
         }
         if ("Admin".equalsIgnoreCase(role)) {
