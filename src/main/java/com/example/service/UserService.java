@@ -37,16 +37,19 @@ public class UserService {
       role = "User";
     }
 
+    if (userRepository.findByEmail(email).isPresent()) {
+      throw new IllegalArgumentException("duplicate email");
+    }
+
     User user = new User();
     user.setFirstName(firstName);
     user.setLastName(lastName);
     user.setEmail(email);
     user.setRole(role);
     user.setEmailValidated(false);
-    user = userRepository.save(user);
     String salt = PasswordHasher.generateSaltBase64();
     user.setPasswordSalt(salt);
-    user.setPassword(PasswordHasher.hashPassword(plainPassword.toCharArray(), salt).toString());
+    user.setPassword(PasswordHasher.hashPassword(plainPassword.toCharArray(), salt));
     user = userRepository.save(user);
     String token = createAndSaveVerificationToken(user.getId());
     mailService.sendVerificationEmail(user.getEmail(), token);

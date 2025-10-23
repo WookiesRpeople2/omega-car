@@ -11,8 +11,8 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.dto.RideBookingDto;
 import com.example.model.RideBooking;
 import com.example.service.RideBookingService;
+import com.example.model.BookingStatus;
 
 import jakarta.validation.Valid;
 
@@ -53,6 +54,7 @@ public class RideBookingController extends BaseController<RideBooking, RideBooki
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('User','Admin')")
     public ResponseEntity<RideBookingDto> create(@Valid @RequestBody RideBookingDto request) {
         RideBooking saved = rideBookingService.createBooking(fromDtoPartial(request));
         return ResponseEntity.created(URI.create("/api/bookings/" + saved.getId())).body(toDto(saved));
@@ -71,6 +73,34 @@ public class RideBookingController extends BaseController<RideBooking, RideBooki
         UUID uuid = UUID.fromString(id);
         rideBookingService.deleteBooking(uuid);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/accept")
+    @PreAuthorize("hasAnyRole('Driver','Admin')")
+    public ResponseEntity<RideBookingDto> accept(@PathVariable("id") String id) {
+        UUID uuid = UUID.fromString(id);
+        RideBooking updated = new RideBooking();
+        updated.setStatus(BookingStatus.CONFIRMED);
+        try {
+            RideBooking saved = rideBookingService.updateBooking(uuid, updated);
+            return ResponseEntity.ok(toDto(saved));
+        } catch (IllegalAccessException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @PostMapping("/{id}/decline")
+    @PreAuthorize("hasAnyRole('Driver','Admin')")
+    public ResponseEntity<RideBookingDto> decline(@PathVariable("id") String id) {
+        UUID uuid = UUID.fromString(id);
+        RideBooking updated = new RideBooking();
+        updated.setStatus(BookingStatus.CANCELLED);
+        try {
+            RideBooking saved = rideBookingService.updateBooking(uuid, updated);
+            return ResponseEntity.ok(toDto(saved));
+        } catch (IllegalAccessException e) {
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }
 

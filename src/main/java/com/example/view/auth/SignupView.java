@@ -116,8 +116,9 @@ public class SignupView extends VerticalLayout {
         UI.getCurrent().navigate("login");
       }
     } catch (Exception ex) {
+      String raw = String.valueOf(ex.getMessage());
       String errorMessage = "Failed to create account. Please try again.";
-      if (ex.getMessage() != null && ex.getMessage().contains("duplicate")) {
+      if (raw.contains("duplicate") || raw.contains("constraint") || raw.contains("Duplicate entry") || raw.contains("unique")) {
         errorMessage = "An account with this email already exists.";
       }
       Notification.show(errorMessage, 3000, Notification.Position.MIDDLE);

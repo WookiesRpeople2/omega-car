@@ -5,6 +5,9 @@ public class AuthResponseDto {
     private String message;
     private String role;
 
+    public AuthResponseDto() {
+    }
+
     public AuthResponseDto(String token) {
         this.token = token;
     }

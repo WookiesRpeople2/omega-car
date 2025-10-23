@@ -7,6 +7,7 @@ public class CarDto {
     private String make;
     private String model;
     private String licensePlate;
+    private UUID ownerId;
     private boolean carValidated;
 
     public UUID getId() {
@@ -39,6 +40,14 @@ public class CarDto {
 
     public void setLicensePlate(String licensePlate) {
         this.licensePlate = licensePlate;
+    }
+
+    public UUID getOwnerId() {
+        return ownerId;
+    }
+
+    public void setOwnerId(UUID ownerId) {
+        this.ownerId = ownerId;
     }
 
     public boolean isCarValidated() {

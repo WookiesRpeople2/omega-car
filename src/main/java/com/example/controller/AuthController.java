@@ -29,6 +29,7 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<AuthResponseDto> signup(@Valid @RequestBody SignupRequestDto request) {
         try {
+            System.out.println(request);
             userService.signup(
                 request.getFirstName(),
                 request.getLastName(),
@@ -50,6 +51,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponseDto> login(@Valid @RequestBody LoginRequestDto request) {
+        System.out.println(request.getEmail());
         return userService.loginAndIssueToken(request.getEmail(), request.getPassword())
             .map(result -> {
                 AuthResponseDto response = new AuthResponseDto(

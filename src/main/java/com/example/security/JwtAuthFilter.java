@@ -33,13 +33,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
       if (token != null) {
         try {
           Map<String, Object> claims = jwtService.parseEncryptedJwt(token);
-          String subject = (String) claims.get("sub");
+          String email = (String) claims.get("email");
           String role = (String) claims.getOrDefault("role", "User");
           String normalizedRole = (role != null && !role.isEmpty())
               ? role.substring(0, 1).toUpperCase(Locale.ENGLISH)
                   + (role.length() > 1 ? role.substring(1).toLowerCase(Locale.ENGLISH) : "")
               : "User";
-          Authentication auth = new UsernamePasswordAuthenticationToken(subject, null,
+          String principal = email != null ? email : (String) claims.get("sub");
+          Authentication auth = new UsernamePasswordAuthenticationToken(principal, null,
               java.util.List.of(new SimpleGrantedAuthority("ROLE_" + normalizedRole)));
           SecurityContextHolder.getContext().setAuthentication(auth);
         } catch (Exception ignored) {

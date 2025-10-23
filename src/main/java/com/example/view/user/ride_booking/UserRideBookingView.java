@@ -26,13 +26,15 @@ import com.vaadin.flow.component.textfield.NumberField;
 import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationException;
+import com.vaadin.flow.router.BeforeEnterEvent;
+import com.vaadin.flow.router.BeforeEnterObserver;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.server.VaadinService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
-
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.Cookie;
 import java.util.Arrays;
 import java.util.List;
@@ -40,8 +42,9 @@ import java.util.Locale;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@RolesAllowed("User")
 @Route("bookings")
-public class UserRideBookingView extends VerticalLayout implements BeforeLeaveObserver {
+public class UserRideBookingView extends VerticalLayout implements BeforeLeaveObserver, BeforeEnterObserver {
 
     private final WebClient webClient;
     private final String baseUrl;
@@ -53,6 +56,8 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
     private TextField trajetFilter;
     private NumberField minPriceFilter;
     private NumberField maxPriceFilter;
+
+    private UUID pendingDriverIdParam = null;
 
     @Autowired
     public UserRideBookingView(WebClient webClient, @Value("${app.base-url}") String baseUrl) {
@@ -589,6 +594,12 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
         rideIdField.setPrefixComponent(VaadinIcon.ROAD.create());
         rideIdField.getStyle().set("--lumo-border-radius", "8px");
 
+        TextField driverIdField = new TextField("ID du chauffeur (optionnel)");
+        String prefillDriver = booking.getDriverId() != null ? booking.getDriverId().toString() : (pendingDriverIdParam != null ? pendingDriverIdParam.toString() : "");
+        driverIdField.setValue(prefillDriver);
+        driverIdField.setPrefixComponent(VaadinIcon.USER.create());
+        driverIdField.getStyle().set("--lumo-border-radius", "8px");
+
         IntegerField seatsField = new IntegerField("Nombre de places");
         seatsField.setMin(1);
         seatsField.setPrefixComponent(VaadinIcon.USERS.create());
@@ -605,9 +616,15 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
                         u -> u != null ? u.toString() : "")
                 .bind(RideBookingDto::getRideId, RideBookingDto::setRideId);
 
+        binder.forField(driverIdField)
+                .withConverter(
+                        s -> s != null && !s.isEmpty() ? UUID.fromString(s) : null,
+                        u -> u != null ? u.toString() : "")
+                .bind(RideBookingDto::getDriverId, RideBookingDto::setDriverId);
+
         binder.readBean(booking);
 
-        formLayout.add(rideIdField, seatsField);
+        formLayout.add(rideIdField, driverIdField, seatsField);
 
         ActionButton cancel = ActionButton.createSecondary("Annuler", VaadinIcon.CLOSE);
         cancel.getStyle().set("border-radius", "8px");
@@ -657,6 +674,26 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
         if (this.currentDialog != null && this.currentDialog.isOpened()) {
             this.currentDialog.close();
             this.currentDialog = null;
+        }
+    }
+
+    @Override
+    public void beforeEnter(BeforeEnterEvent event) {
+        var req = VaadinService.getCurrentRequest();
+        if (req == null || req.getCookies() == null) {
+            event.rerouteTo(com.example.view.auth.LoginView.class);
+            return;
+        }
+        boolean hasAuth = java.util.Arrays.stream(req.getCookies()).anyMatch(c -> "AUTH".equals(c.getName()) && c.getValue() != null && !c.getValue().isEmpty());
+        if (!hasAuth) {
+            event.rerouteTo(com.example.view.auth.LoginView.class);
+            return;
+        }
+        String driverId = event.getLocation().getQueryParameters().getParameters().getOrDefault("driverId", java.util.List.of()).stream().findFirst().orElse(null);
+        try {
+            this.pendingDriverIdParam = driverId != null ? UUID.fromString(driverId) : null;
+        } catch (IllegalArgumentException ex) {
+            this.pendingDriverIdParam = null;
         }
     }
 
@@ -715,6 +752,17 @@ public class UserRideBookingView extends VerticalLayout implements BeforeLeaveOb
 
     private void createBooking(RideBookingDto booking) {
         try {
+            // Validate driver online if specified
+            if (booking.getDriverId() != null) {
+                var e = webClient.get()
+                    .uri(baseUrl + "/api/driver-locations/" + booking.getDriverId())
+                    .retrieve()
+                    .bodyToMono(com.example.dto.DriverLocationEvent.class)
+                    .block();
+                if (e == null) {
+                    throw new RuntimeException("Selected driver is offline");
+                }
+            }
             String token = getAuthToken();
             webClient.post()
                     .uri(baseUrl + "/api/bookings")

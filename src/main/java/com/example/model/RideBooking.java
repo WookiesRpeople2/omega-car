@@ -24,6 +24,8 @@ public class RideBooking extends BaseModel {
     @Column(name = "seats_booked", nullable = false)
     private int seatsBooked;
 
+    @Column(name = "driver_id")
+    private UUID driverId;
 
     @ElementCollection
     @CollectionTable(
@@ -54,6 +56,10 @@ public class RideBooking extends BaseModel {
         return status;
     }
 
+    public UUID getDriverId() {
+        return driverId;
+    }
+
     public void setRideId(UUID rideId) {
         this.rideId = rideId;
     }
@@ -68,5 +74,9 @@ public class RideBooking extends BaseModel {
 
     public void setStatus(BookingStatus status) {
         this.status = status;
+    }
+
+    public void setDriverId(UUID driverId) {
+        this.driverId = driverId;
     }
 }

@@ -19,6 +19,7 @@ public class User extends BaseModel{
   private String role;
   
   @Email
+  @Column(unique = true)
   private String email; 
 
   @Size(min = 1, message = "{EMPTY_INPUT}")
